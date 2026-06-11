@@ -1,0 +1,76 @@
+# ═══════════════════════════════════════════════════════════════
+#  Holografic DB — .gitignore
+#  Evita pujar a GitHub fitxers de compilació, configuració local
+#  de Visual Studio i dades personals de l'usuari.
+# ═══════════════════════════════════════════════════════════════
+
+# ── Resultats de compilació ─────────────────────────────────────
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Ll]og/
+[Ll]ogs/
+
+# ── Visual Studio: caché, estat local i fitxers d'usuari ────────
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.vsidx
+*.VC.db
+*.VC.VC.opendb
+
+# ── Caché de NuGet i MSBuild ────────────────────────────────────
+*.nuget.cache
+*.nuget.dgspec.json
+*.nuget.g.props
+*.nuget.g.targets
+project.assets.json
+project.nuget.cache
+*.assets.cache
+*.csproj.CopyComplete
+*.vbproj.CopyComplete
+*.GeneratedMSBuildEditorConfig.editorconfig
+*.AssemblyInfo.vb
+*.AssemblyInfoInputs.cache
+*.CoreCompileInputs.cache
+*.genruntimeconfig.cache
+*.BuildWithSkipAnalyzers
+*.Up2Date
+*_FileListAbsolute.txt
+
+# ── Configuració local de l'aplicació (NO pujar) ────────────────
+# Preferències personals de l'usuari (tema, idioma, debug...)
+opcions.json
+# Disposició de finestres de Visual Studio
+DocumentLayout.json
+DocumentLayout_backup.json
+
+# ── Bases de dades locals i fitxers generats per proves ─────────
+# (Si vols incloure projectes .hdb d'exemple, posa'ls a /examples
+#  i descomenta l'excepció de sota)
+*.mdf
+*.ldf
+*.ndf
+# *.hdb
+# !examples/*.hdb
+
+# ── Sortides d'exportació de proves ─────────────────────────────
+*_mysql.sql
+*_postgresql.sql
+
+# ── Sistema operatiu ────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+.DS_Store
+
+# ── Còpies de seguretat i temporals ─────────────────────────────
+*.bak
+*.tmp
+*.temp
+*~
+*.orig

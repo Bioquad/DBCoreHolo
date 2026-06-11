@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>DBCoreHolographic</RootNamespace>
+    <AssemblyName>DBCoreHolographic</AssemblyName>
+    <StartupObject>DBCoreHolographic.Program</StartupObject>
+    <MyType>WindowsForms</MyType>
+    <OptionStrict>Off</OptionStrict>
+    <OptionExplicit>On</OptionExplicit>
+    <Nullable>disable</Nullable>
+
+    <!-- Version and Product Information -->
+    <Version>0.24.0-alpha</Version>
+    <FileVersion>0.24.0.0</FileVersion>
+    <ProductVersion>0.24.0.0</ProductVersion>
+    <Product>Holographic DB</Product>
+    <Company>Bioquad.github.io</Company>
+    <Description>Visual relational database designer with 3D holographic interface</Description>
+    <Copyright>Copyright (C) 2026 Bioquad.github.io</Copyright>
+
+    <!-- ClickOnce Configuration -->
+    <PublishUrl>https://github.com/bioquad/DBCoreHolographic/releases/</PublishUrl>
+    <InstallUrl></InstallUrl>
+    <BootstrapperEnabled>true</BootstrapperEnabled>
+    <GenerateManifests>true</GenerateManifests>
+    <ManifestCertificateThumbprint></ManifestCertificateThumbprint>
+    <ManifestKeyFile></ManifestKeyFile>
+    <ManifestTimestampUrl></ManifestTimestampUrl>
+    <TargetCulture>en</TargetCulture>
+    <SelfContained>false</SelfContained>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishReadyToRun>false</PublishReadyToRun>
+
+    <!-- BC40056: Imports SkiaSharp.Views.WindowsForms (valid en runtime) -->
+    <!-- NU1701: OpenTK restaurat amb .NETFramework (compatible en runtime) -->
+    <NoWarn>BC40056;NU1701</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- SkiaSharp: motor grafic 2D (substitut OpenGL per WinForms net8) -->
+    <PackageReference Include="SkiaSharp"                    Version="2.88.8" />
+    <PackageReference Include="SkiaSharp.Views.WindowsForms" Version="2.88.8" />
+    <PackageReference Include="Newtonsoft.Json"              Version="13.0.3" />
+    <!-- SQL Server LocalDB: importar fitxers .mdf -->
+    <PackageReference Include="Microsoft.Data.SqlClient"     Version="5.2.1" />
+  </ItemGroup>
+
+</Project>
