@@ -1,19 +1,3 @@
-'  Holographic DB - A 3D visual relational database designer
-'  Copyright (C) 2026 Bioquad.github.io
-'
-'  This program is free software: you can redistribute it and/or modify
-'  it under the terms of the GNU General Public License as published by
-'  the Free Software Foundation, either version 3 of the License, or
-'  (at your option) any later version.
-'
-'  This program is distributed in the hope that it will be useful,
-'  but WITHOUT ANY WARRANTY; without even the implied warranty of
-'  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-'  GNU General Public License for more details.
-'
-'  You should have received a copy of the GNU General Public License
-'  along with this program. If not, see <https://www.gnu.org/licenses/>.
-'
 Imports System.Drawing
 Imports SkiaSharp
 
@@ -226,6 +210,11 @@ Public Class SphereRenderer
                 Dim sel As Boolean = (r.Id = SelRelacioId)
                 Dim c   As Color   = ft.ColorGL
 
+                ' Focus relacional: atenuar relacions que no toquen la taula seleccionada
+                Dim relFocus As Boolean = (SelTaulaId < 0 OrElse sel OrElse
+                                           r.TablaOrigenId = SelTaulaId OrElse
+                                           r.TablaDestinoId = SelTaulaId)
+
                 ' ── AUTO-RELACIÓ REFLEXIVA ───────────────────────────────
                 If r.TablaOrigenId = r.TablaDestinoId Then
                     Dim ex As Single, ey As Single, ez As Single
@@ -238,12 +227,12 @@ Public Class SphereRenderer
                     Dim loopR As Single = hw * 0.55F
                     Dim loopCx As Single = pt.X + hw * 0.85F
                     Dim loopCy As Single = pt.Y - loopR
-                    pLin.Color       = New SKColor(c.R, c.G, c.B, If(sel, CByte(230), CByte(160)))
+                    pLin.Color       = New SKColor(c.R, c.G, c.B, If(sel, CByte(230), If(relFocus, CByte(160), CByte(25))))
                     pLin.StrokeWidth = If(sel, 2.5F, 1.4F)
                     canvas.DrawCircle(loopCx, loopCy, loopR, pLin)
-                    pPnt.Color = New SKColor(c.R, c.G, c.B, If(sel, CByte(255), CByte(190)))
+                    pPnt.Color = New SKColor(c.R, c.G, c.B, If(sel, CByte(255), If(relFocus, CByte(190), CByte(25))))
                     canvas.DrawCircle(loopCx, loopCy + loopR, If(sel, 4.0F, 2.5F), pPnt)
-                    pTxt.Color = New SKColor(c.R, c.G, c.B, If(sel, CByte(220), CByte(130)))
+                    pTxt.Color = New SKColor(c.R, c.G, c.B, If(sel, CByte(220), If(relFocus, CByte(130), CByte(20))))
                     Using fLp As New SKFont(SKTypeface.FromFamilyName("Courier New"),
                                             If(sel, 7.5F, 6.5F))
                         canvas.DrawText(r.CardinalityLabel, loopCx + loopR + 2, loopCy, fLp, pTxt)
@@ -253,7 +242,7 @@ Public Class SphereRenderer
                     If grupCount.ContainsKey(kSelf) AndAlso grupCount(kSelf) > 1 Then
                         Using pmul As New SKPaint()
                             pmul.IsAntialias = True : pmul.Style = SKPaintStyle.Fill
-                            pmul.Color = New SKColor(AppStyle.ColPK.R, AppStyle.ColPK.G, AppStyle.ColPK.B, 200)
+                            pmul.Color = New SKColor(AppStyle.ColPK.R, AppStyle.ColPK.G, AppStyle.ColPK.B, If(relFocus, CByte(200), CByte(25)))
                             canvas.DrawCircle(loopCx - loopR - 4, loopCy, 3.5F, pmul)
                         End Using
                     End If
@@ -285,20 +274,20 @@ Public Class SphereRenderer
                 Dim qA As New SKPoint(pA.X + nx * perp, pA.Y + ny * perp)
                 Dim qB As New SKPoint(pB.X + nx * perp, pB.Y + ny * perp)
 
-                pLin.Color       = New SKColor(c.R, c.G, c.B, If(sel, CByte(220), CByte(140)))
+                pLin.Color       = New SKColor(c.R, c.G, c.B, If(sel, CByte(220), If(relFocus, CByte(140), CByte(22))))
                 pLin.StrokeWidth = If(sel, 2.2F, 1.1F)
                 canvas.DrawLine(qA.X, qA.Y, qB.X, qB.Y, pLin)
 
                 Dim mx As Single = (qA.X + qB.X) / 2.0F
                 Dim my As Single = (qA.Y + qB.Y) / 2.0F
-                pPnt.Color = New SKColor(c.R, c.G, c.B, If(sel, CByte(255), CByte(180)))
+                pPnt.Color = New SKColor(c.R, c.G, c.B, If(sel, CByte(255), If(relFocus, CByte(180), CByte(22))))
                 canvas.DrawCircle(mx, my, If(sel, 4.5F, 2.8F), pPnt)
 
                 ' Indicador "+" si múltiples relacions
                 If nPair > 1 Then
                     Using pmul As New SKPaint()
                         pmul.IsAntialias = True : pmul.Style = SKPaintStyle.Fill
-                        pmul.Color = New SKColor(AppStyle.ColPK.R, AppStyle.ColPK.G, AppStyle.ColPK.B, 200)
+                        pmul.Color = New SKColor(AppStyle.ColPK.R, AppStyle.ColPK.G, AppStyle.ColPK.B, If(relFocus, CByte(200), CByte(25)))
                         canvas.DrawCircle(mx + 7, my - 7, 3.5F, pmul)
                     End Using
                 End If
@@ -307,7 +296,7 @@ Public Class SphereRenderer
                     pTxt.Color = New SKColor(c.R, c.G, c.B, 220)
                     canvas.DrawText(r.CardinalityLabel, mx + 6, my - 3, fCard, pTxt)
                 Else
-                    pTxt.Color = New SKColor(c.R, c.G, c.B, 120)
+                    pTxt.Color = New SKColor(c.R, c.G, c.B, If(relFocus, CByte(120), CByte(18)))
                     Using fCardSm As New SKFont(SKTypeface.FromFamilyName("Courier New"), 6.5F)
                         canvas.DrawText(r.CardinalityLabel, mx + 5, my - 2, fCardSm, pTxt)
                     End Using
@@ -362,14 +351,32 @@ Public Class SphereRenderer
                 sFactor = 1.25F
             End If
 
-            _DibuixTaula(canvas, item.T, pt, sBase * sFactor)
+            ' Focus relacional: si hi ha taula seleccionada, les no-relacionades es dibuixen transparents
+            Dim fAlpha As Byte = 255
+            If SelTaulaId >= 0 AndAlso item.T.Id <> SelTaulaId Then
+                If Not EstaRelacionada(item.T.Id, p) Then fAlpha = 40
+            End If
+
+            _DibuixTaula(canvas, item.T, pt, sBase * sFactor, fAlpha)
         Next
     End Sub
 
     Private Sub _DibuixTaula(canvas As SKCanvas, t As TablaBBDD,
-                              centre As SKPoint, s As Single)
+                              centre As SKPoint, s As Single,
+                              Optional focusAlpha As Byte = 255)
         Dim sel  As Boolean = (t.Id = SelTaulaId)
         Dim cBase As Color = t.ColorGL
+
+        ' ── Focus relacional: capa de transparència global ──────────────
+        ' Quan focusAlpha < 255, tot el dibuix de la taula es renderitza
+        ' dins una capa translúcida (SaveLayer), sense tocar cada paint.
+        Dim usaFocusLayer As Boolean = (focusAlpha < 255)
+        If usaFocusLayer Then
+            Using layerPaint As New SKPaint()
+                layerPaint.Color = New SKColor(255, 255, 255, focusAlpha)
+                canvas.SaveLayer(layerPaint)
+            End Using
+        End If
 
         ' Atenuació per taules no-hub del grup (Depth 0.75 = atenuat, 1.0 = hub/normal)
         ' Barrejar el color del grup amb gris fosc proporcional a (1 - Depth)
@@ -561,6 +568,9 @@ Public Class SphereRenderer
                 canvas.DrawRoundRect(rErr, pErr2)
             End Using
         End If
+
+        ' ── Tancar la capa de focus relacional ───────────────────────────
+        If usaFocusLayer Then canvas.Restore()
     End Sub
 
     ' Exposat públicament per a MnuVeureTot (càlcul del bounding box)
