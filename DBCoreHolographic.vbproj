@@ -37,15 +37,20 @@
     <!-- BC40056: Imports SkiaSharp.Views.WindowsForms (valid en runtime) -->
     <!-- NU1701: OpenTK restaurat amb .NETFramework (compatible en runtime) -->
     <NoWarn>BC40056;NU1701</NoWarn>
+    <ApplicationIcon>DBCoreHolo.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Include="DBCoreHolo.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- SkiaSharp: motor grafic 2D (substitut OpenGL per WinForms net8) -->
-    <PackageReference Include="SkiaSharp"                    Version="2.88.8" />
+    <PackageReference Include="SkiaSharp" Version="2.88.8" />
     <PackageReference Include="SkiaSharp.Views.WindowsForms" Version="2.88.8" />
-    <PackageReference Include="Newtonsoft.Json"              Version="13.0.3" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <!-- SQL Server LocalDB: importar fitxers .mdf -->
-    <PackageReference Include="Microsoft.Data.SqlClient"     Version="5.2.1" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.1" />
   </ItemGroup>
 
 </Project>

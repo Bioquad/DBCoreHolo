@@ -1,4 +1,6 @@
 <Solution>
-  <Project Path="../DBCoreHolo_Setup/DBCoreHolo_Setup.vdproj" Type="Installer" />
+  <Project Path="../DBCoreHolo_Setup/DBCoreHolo_Setup.vdproj" Type="Installer">
+    <Build />
+  </Project>
   <Project Path="DBCoreHolographic.vbproj" />
 </Solution>
