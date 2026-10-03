@@ -352,7 +352,7 @@ Public Class FrmConsultaDades
             .Dock = DockStyle.Fill, .ReadOnly = True, .AllowUserToAddRows = False, .AllowUserToDeleteRows = False,
             .AllowUserToResizeRows = False, .RowHeadersVisible = False, .BorderStyle = BorderStyle.None,
             .SelectionMode = DataGridViewSelectionMode.CellSelect, .EnableHeadersVisualStyles = False,
-            .BackgroundColor = AppStyle.ColFons, .GridColor = AppStyle.ColVoraFeble,
+            .BackgroundColor = AppStyle.ColFons, .GridColor = Opac(AppStyle.ColVoraFeble, AppStyle.ColFonsMig),
             .AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None,
             .ClipboardCopyMode = DataGridViewClipboardCopyMode.EnableWithAutoHeaderText}
         g.DefaultCellStyle.BackColor = AppStyle.ColFonsMig
@@ -375,6 +375,16 @@ Public Class FrmConsultaDades
                 Next
             End Sub
         Return g
+    End Function
+
+    ' DataGridView no admet colors amb transparència (GridColor, fons...):
+    ' es barreja el color amb el fons per obtenir el mateix to, opac
+    Private Shared Function Opac(c As Color, fons As Color) As Color
+        Dim a As Single = c.A / 255.0F
+        Return Color.FromArgb(255,
+                              CInt(c.R * a + fons.R * (1 - a)),
+                              CInt(c.G * a + fons.G * (1 - a)),
+                              CInt(c.B * a + fons.B * (1 - a)))
     End Function
 
     Private Function TaulaActiva() As DataTable

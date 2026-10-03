@@ -333,6 +333,9 @@ Public Module AppStyle
         tc.BackColor = ColFons
         tc.ForeColor = ColAccent
         AddHandler tc.DrawItem, Sub(s As Object, ev As DrawItemEventArgs)
+            ' Amb pestanyes dinàmiques (afegir/tancar) Windows pot demanar
+            ' dibuixar un índex que ja no existeix
+            If ev.Index < 0 OrElse ev.Index >= tc.TabPages.Count Then Return
             Dim g As Drawing.Graphics = ev.Graphics
             Dim tab As TabPage = tc.TabPages(ev.Index)
             Dim sel As Boolean = (ev.Index = tc.SelectedIndex)
