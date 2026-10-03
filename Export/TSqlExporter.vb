@@ -151,9 +151,10 @@ Public Class TSqlExporter
         sb.Append(GenerarTipus(f))
 
         If f.EsFileStream Then sb.Append(" FILESTREAM")
-        If EsTipusText(f.TipoDato) AndAlso Not String.IsNullOrWhiteSpace(f.Collation) AndAlso
+        If EsTipusText(f.TipoDato) AndAlso Not f.Collation Is Nothing AndAlso
            Not f.Collation.Trim().Equals("DATABASE_DEFAULT", StringComparison.OrdinalIgnoreCase) Then
-            sb.Append(" COLLATE " & f.Collation.Trim())
+            ' Només noms de col·lació vàlids (lletres, xifres i _)
+            sb.Append(MdfExporter.ClausulaCollation(f.Collation.Trim()))
         End If
         If f.DataMask <> DataMaskFunction.NoMask Then
             sb.Append(" MASKED WITH (FUNCTION = '" & MaskFn(f) & "')")

@@ -99,6 +99,13 @@ Public Module CopiaBaseDades
                                                  "); s'ha copiat per transferència.")
                             Informar(progres, "BACKUP/RESTORE no disponible: es copia per transferència.")
                             If BdExisteix(dstMaster, nomDesti) Then MdfExporter.EliminarBd(dstMaster, nomDesti)
+                            ' Fitxers que un RESTORE fallit hagi pogut deixar (abans s'ha
+                            ' comprovat que no existien, per tant són nostres)
+                            If desti.EsFitxer Then
+                                For Each f As String In {desti.RutaMdf, RutaLog(desti.RutaMdf)}
+                                    If IO.File.Exists(f) Then IO.File.Delete(f)
+                                Next
+                            End If
                             bdCreada = False
                         End Try
                     End If
@@ -216,10 +223,12 @@ Public Module CopiaBaseDades
         End If
 
         Dim bak As String = CombinarRuta(dirDades, nomDesti & "_" & Guid.NewGuid().ToString("N") & ".bak")
+        Dim backupFet As Boolean = False
         Try
             Informar(progres, "Fent una còpia de seguretat (COPY_ONLY) de '" & nomOrigen & "'...")
             Executar(master, Nothing, "BACKUP DATABASE @db TO DISK = @bak WITH COPY_ONLY, INIT, FORMAT;",
                      New SqlParameter("@db", nomOrigen), New SqlParameter("@bak", bak))
+            backupFet = True
 
             ' Fitxers lògics de la còpia
             Dim fitxers As New List(Of Tuple(Of String, String, String))()   ' lògic, físic, tipus
@@ -264,7 +273,7 @@ Public Module CopiaBaseDades
             Informar(progres, "Restaurant com a '" & nomDesti & "'...")
             Executar(master, Nothing, sql.ToString(), params.ToArray())
         Finally
-            EsborrarCopiaTemporal(master, bak, res)
+            If backupFet Then EsborrarCopiaTemporal(master, bak, res)
         End Try
     End Sub
 

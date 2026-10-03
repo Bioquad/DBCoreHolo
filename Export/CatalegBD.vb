@@ -425,7 +425,7 @@ Public Class CatalegBD
             "       SCHEMA_NAME(pt.schema_id), pt.name, tr.is_disabled " &
             "FROM sys.triggers tr " &
             "LEFT JOIN sys.sql_modules m ON m.object_id = tr.object_id " &
-            "LEFT JOIN sys.tables pt ON pt.object_id = tr.parent_id " &
+            "LEFT JOIN sys.objects pt ON pt.object_id = tr.parent_id AND tr.parent_class = 1 " &
             "WHERE tr.is_ms_shipped = 0 AND tr.type = 'TR';",
             Sub(r)
                 Dim tipus As String = r.GetString(0).Trim()
@@ -435,6 +435,8 @@ Public Class CatalegBD
                     .AnsiNulls = r.IsDBNull(5) OrElse r.GetBoolean(5),
                     .Desactivat = r.GetBoolean(8)}
                 If tipus = "TR" Then
+                    ' Sense objecte pare → trigger DDL de base de dades (el pare
+                    ' d'un trigger DML pot ser una taula o una vista)
                     If r.IsDBNull(7) Then
                         m.EsTriggerBD = True
                     Else

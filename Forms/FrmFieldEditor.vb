@@ -398,6 +398,10 @@ Public Class FrmFieldEditor
         _txtAlias.Text = f.NomAlias
         _txtMascara.Text = f.Mascara
         _txtCheck.Text = f.CheckExpression
+        ' Una col·lació importada que no és a la llista s'hi afegeix per no perdre-la
+        If Not String.IsNullOrWhiteSpace(f.Collation) AndAlso Not _cboCollation.Items.Contains(f.Collation) Then
+            _cboCollation.Items.Add(f.Collation)
+        End If
         SelIdx(_cboCollation, f.Collation)
         _cboMask.SelectedIndex = CInt(f.DataMask)
         _txtMPref.Text = f.MaskPrefix.ToString()

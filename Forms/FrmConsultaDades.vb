@@ -83,7 +83,7 @@ Public Class FrmConsultaDades
             .Dock = DockStyle.Fill, .CheckOnClick = True, .IntegralHeight = False,
             .BackColor = AppStyle.ColFonsMig, .ForeColor = AppStyle.ColTextPrinc,
             .BorderStyle = BorderStyle.None, .Font = AppStyle.FntPetit}
-        AddHandler _lstObjectes.DoubleClick, Sub(s, e) BtnConsultar_Click(s, e)
+        AddHandler _lstObjectes.DoubleClick, AddressOf LstObjectes_DoubleClick
 
         Dim pnlAccions As New Panel() With {.Dock = DockStyle.Bottom, .Height = 92, .BackColor = AppStyle.ColFons}
         Dim btnTotes As Button = AppStyle.CrearBotoCapc(Locale.Str("VIS_TOTES"))
@@ -113,8 +113,14 @@ Public Class FrmConsultaDades
         AddHandler _tabs.SelectedIndexChanged, Sub(s, e) ActualitzarEstatPestanya()
 
         _tabSql = New TabPage(Locale.Str("VIS_SQL_TAB"))
-        Dim split As New SplitContainer() With {.Dock = DockStyle.Fill, .Orientation = Orientation.Horizontal,
-                                                .SplitterDistance = 150, .BackColor = AppStyle.ColFons}
+        ' La mida s'ha de fixar abans de SplitterDistance: amb la mida per defecte
+        ' (150x100) un valor de 150 és fora de rang i llança una excepció
+        Dim split As New SplitContainer()
+        split.Size = New Size(800, 500)
+        split.Orientation = Orientation.Horizontal
+        split.SplitterDistance = 150
+        split.Dock = DockStyle.Fill
+        split.BackColor = AppStyle.ColFons
         _txtSql = New TextBox() With {.Multiline = True, .Dock = DockStyle.Fill, .ScrollBars = ScrollBars.Both,
                                       .WordWrap = False, .AcceptsTab = True, .Font = New Font("Courier New", 10),
                                       .BackColor = AppStyle.ColFonsMig, .ForeColor = AppStyle.ColAccentSec,
@@ -172,7 +178,7 @@ Public Class FrmConsultaDades
     ' ════════════════════════════════════════════════════════
     ' ACCIONS
     ' ════════════════════════════════════════════════════════
-    Private Async Sub BtnConsultar_Click(s As Object, e As EventArgs)
+    Private Sub BtnConsultar_Click(s As Object, e As EventArgs)
         Dim sel As New List(Of ConsultaDades.ObjecteDades)()
         For Each o As Object In _lstObjectes.CheckedItems
             sel.Add(DirectCast(o, ConsultaDades.ObjecteDades))
@@ -180,6 +186,17 @@ Public Class FrmConsultaDades
         If sel.Count = 0 AndAlso _lstObjectes.SelectedItem IsNot Nothing Then
             sel.Add(DirectCast(_lstObjectes.SelectedItem, ConsultaDades.ObjecteDades))
         End If
+        Consultar(sel)
+    End Sub
+
+    ' Doble clic: obre només l'element clicat (encara que n'hi hagi d'altres marcats)
+    Private Sub LstObjectes_DoubleClick(s As Object, e As EventArgs)
+        If _lstObjectes.SelectedItem Is Nothing Then Return
+        Consultar(New List(Of ConsultaDades.ObjecteDades) From {
+            DirectCast(_lstObjectes.SelectedItem, ConsultaDades.ObjecteDades)})
+    End Sub
+
+    Private Async Sub Consultar(sel As List(Of ConsultaDades.ObjecteDades))
         If sel.Count = 0 Then
             SetEstat(Locale.Str("VIS_ERR_SEL"), True)
             Return
@@ -288,8 +305,6 @@ Public Class FrmConsultaDades
                 BtnConsultar_Click(Me, EventArgs.Empty)
             End If
             e.Handled = True
-        ElseIf e.KeyCode = Keys.Escape Then
-            Me.Close()
         End If
         MyBase.OnKeyDown(e)
     End Sub
