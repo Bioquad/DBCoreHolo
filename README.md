@@ -18,7 +18,7 @@ Holographic DB is a desktop application for Windows that allows you to design, d
 - **Strict Entity-Relationship Model:** A real-time ERM validation engine blocks invalid operations (such as an FK not pointing to a PK, incompatible data types, direct M:M relationships, duplicates, etc.). Tables with violations flash in red on the sphere.
 - **Full T-SQL Field Editing:** Access to all SQL Server attributes — data types, IDENTITY, computed columns, CHECK constraints, DEFAULT values, collations, Dynamic Data Masking, ROWGUIDCOL, FILESTREAM, extended properties/descriptions, and more.
 - **Undo/Redo:** A complete command stack allows you to undo and redo actions (adding/deleting/moving tables, fields, and relationships).
-- **Automatic Group Organization:** Features community detection within the relationship graph (Label Propagation) with automatic coloring and concentric circle distribution.
+- **Automatic Group Organization:** Community detection in the relationship graph (Louvain) with a natural force-directed layout: compact groups, related groups side by side, no overlapping tables, automatic coloring, smooth animated transition and undo.
 - **Importing:**
   - SQL Scripts (`.sql`) with dialect normalization (MySQL/PostgreSQL → T-SQL)
   - SQL Server LocalDB `.mdf` files
@@ -123,6 +123,7 @@ Export/ (database tools)
 
 Graphics/
   SphereRenderer.vb         ← SkiaSharp graphics engine: sphere, tables, relationships, hit-testing
+  OrganitzadorGrups.vb      Group detection (Louvain) + force-directed layout without overlaps
 
 Forms/
   FrmSplash.vb              Loading screen
@@ -263,7 +264,7 @@ Holografic DB és una aplicació d'escriptori per a Windows que permet dissenyar
 - **Model Entitat-Relació estricte:** Motor de validació MER en temps real que bloqueja operacions inválides (FK que no apunta a PK, tipus incompatibles, relacions M:M directes, duplicats, etc.). Les taules amb infraccions parpellegen en vermell sobre l'esfera.
 - **Edició completa de camps T-SQL:** Tots els atributs de SQL Server — tipus de dada, IDENTITY, columnes calculades, CHECK, DEFAULT, col·lació, Dynamic Data Masking, ROWGUIDCOL, FILESTREAM, descripcions exteses...
 - **Desfer/Refer:** Pila de comandes completa (afegir/eliminar/moure taules, camps i relacions).
-- **Organització automàtica per grups:** Detecció de comunitats al graf de relacions (Label Propagation) amb coloració i distribució en cercles concèntrics.
+- **Organització automàtica per grups:** Detecció de comunitats al graf de relacions (Louvain) amb una distribució natural per forces: grups compactes, grups relacionats l'un al costat de l'altre, cap taula encavalcada, coloració automàtica, transició animada i es pot desfer.
 - **Importació:**
   - Scripts SQL (`.sql`) amb normalització de dialecte (MySQL/PostgreSQL → T-SQL)
   - Fitxers `.mdf` de SQL Server LocalDB
@@ -368,6 +369,7 @@ Export/ (eines de bases de dades)
 
 Graphics/
   SphereRenderer.vb         ← Motor gràfic SkiaSharp: esfera, taules, relacions, hit-testing
+  OrganitzadorGrups.vb      Detecció de grups (Louvain) + distribució per forces sense encavalcaments
 
 Forms/
   FrmSplash.vb              Pantalla de càrrega

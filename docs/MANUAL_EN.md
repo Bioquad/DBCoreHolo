@@ -223,8 +223,8 @@ Errors appear in red inside the editor, and the operation cannot be saved until 
 ## 8. Organization and Groups
 
 - **Group Color**: Each table is assigned one of 8 colors. This color tints the table on the sphere, its outgoing relationships, and its corresponding item in the side list.
-- ***View → [ G ] Organize All Groups***: Automatically detects communities within the relationship graph (Label Propagation), assigns distinct colors to adjacent groups, brings the **hub** of each group (the table with the most connections) to the foreground, and distributes the rest in concentric circles. Isolated tables are organized into a column on the right.
-- ***View → [ g ] Organize Selected Group***: Distributes related tables in a circle around the active table.
+- ***View → [ G ] Organize All Groups***: Automatically detects groups (modules) in the relationship graph with the Louvain method and lays them out naturally: related tables attract each other, each group stays compact, related groups are placed next to each other and no table overlaps another. Groups that are close on screen or related get different colors, and the **hub** of each group (the table with the most connections) is highlighted. Tables without relationships are arranged in a compact grid just below. The tables glide to their new positions and the camera frames the whole diagram; the result is always the same for the same model and can be undone with **Ctrl+Z**.
+- ***View → [ g ] Organize Selected Group***: Applies the same layout only to the selected group (or the active table and its related tables); the hub stays where it is. It can also be undone.
 - **Bounding Box Group Selection**: Drag across the background to select tables belonging to a group and move them together.
 
 ---

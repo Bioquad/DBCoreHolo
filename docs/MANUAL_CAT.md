@@ -225,8 +225,8 @@ Els errors apareixen en vermell dins l'editor i l'operació no es desa fins que 
 ## 8. Organització i grups
 
 - **Color de grup**: cada taula té un dels 8 colors. El color tenyeix la taula a l'esfera, les seves relacions sortints i el seu element a la llista lateral.
-- ***Vista → [ G ] Organitzar tots els grups***: detecta automàticament comunitats al graf de relacions (Label Propagation), assigna colors diferents a grups adjacents, situa el **hub** de cada grup (la taula amb més relacions) en primer pla i distribueix la resta en cercles concèntrics. Les taules aïllades es col·loquen en una columna a la dreta.
-- ***Vista → [ g ] Organitzar grup seleccionat***: distribueix les taules relacionades en cercle al voltant de la taula activa.
+- ***Vista → [ G ] Organitzar tots els grups***: detecta automàticament els grups (mòduls) del graf de relacions amb el mètode de Louvain i els distribueix de manera natural: les taules relacionades s'atrauen, cada grup es manté compacte, els grups relacionats queden l'un al costat de l'altre i cap taula no se superposa a una altra. Els grups propers o relacionats tenen colors diferents i el **hub** de cada grup (la taula amb més relacions) queda ressaltat. Les taules sense relacions es col·loquen en una graella compacta just a sota. Les taules es desplacen suaument fins a la nova posició i la càmera enquadra tot el diagrama; el resultat és sempre el mateix per al mateix model i es pot desfer amb **Ctrl+Z**.
+- ***Vista → [ g ] Organitzar grup seleccionat***: aplica la mateixa distribució només al grup seleccionat (o a la taula activa i les seves relacionades); el hub es queda on és. També es pot desfer.
 - **Selecció de grup amb rectangle**: arrossega sobre el fons per seleccionar les taules d'un grup i moure-les conjuntament.
 
 ---

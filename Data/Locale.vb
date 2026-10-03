@@ -217,7 +217,7 @@ Public Module Locale
             Case "STATUS_ORGANITZAT"    : Return "Arranged by relation groups."
             Case "STATUS_ORGANITZAT_SEL": Return "Selected group arranged."
             Case "CONF_ORGANITZAR_TITOL": Return "Arrange all groups"
-            Case "CONF_ORGANITZAR_MSG"  : Return "This will reorganize the entire database: positions, colors and group depths will be recalculated." & Environment.NewLine & "Continue?"
+            Case "CONF_ORGANITZAR_MSG"  : Return "This will reorganize the entire database: positions, colors and group depths will be recalculated (Ctrl+Z undoes it)." & Environment.NewLine & "Continue?"
             Case "STATUS_ESFERA_ON"     : Return "Sphere: visible"
             Case "STATUS_ESFERA_OFF"    : Return "Sphere: hidden"
             Case "STATUS_LLISTA_ON"     : Return "List: visible"
@@ -467,6 +467,7 @@ Public Module Locale
             Case "MENU_COPIAR"           : Return "[ 4 ]  COPY DATABASE"
             Case "MNU_CONSULTAR_DADES"   : Return "Query data..."
             Case "MNU_COPIAR_BD"         : Return "Copy database..."
+            Case "CMD_ORGANITZAR"      : Return "Organize by groups"
             Case Else : Return "[" & clau & "]"
         End Select
     End Function
@@ -655,7 +656,7 @@ Public Module Locale
             Case "STATUS_ORGANITZAT"    : Return "Organizado por grupos de relación."
             Case "STATUS_ORGANITZAT_SEL": Return "Grupo seleccionado organizado."
             Case "CONF_ORGANITZAR_TITOL": Return "Organizar todos los grupos"
-            Case "CONF_ORGANITZAR_MSG"  : Return "Se reorganizará toda la base de datos: posiciones, colores y profundidades de grupo se recalcularán." & Environment.NewLine & "¿Continuar?"
+            Case "CONF_ORGANITZAR_MSG"  : Return "Se reorganizará toda la base de datos: posiciones, colores y profundidades de grupo se recalcularán (Ctrl+Z lo deshace)." & Environment.NewLine & "¿Continuar?"
             Case "STATUS_ESFERA_ON"     : Return "Esfera: visible"
             Case "STATUS_ESFERA_OFF"    : Return "Esfera: oculta"
             Case "STATUS_LLISTA_ON"     : Return "Lista: visible"
@@ -905,6 +906,7 @@ Public Module Locale
             Case "MENU_COPIAR"           : Return "[ 4 ]  COPIAR BASE DE DATOS"
             Case "MNU_CONSULTAR_DADES"   : Return "Consultar datos..."
             Case "MNU_COPIAR_BD"         : Return "Copiar base de datos..."
+            Case "CMD_ORGANITZAR"      : Return "Organizar por grupos"
             Case Else : Return "[" & clau & "]"
         End Select
     End Function
@@ -1093,7 +1095,7 @@ Public Module Locale
             Case "STATUS_ORGANITZAT"    : Return "Organitzat per grups de relació."
             Case "STATUS_ORGANITZAT_SEL": Return "Grup seleccionat organitzat."
             Case "CONF_ORGANITZAR_TITOL": Return "Organitzar tots els grups"
-            Case "CONF_ORGANITZAR_MSG"  : Return "S'organitzarà tota la base de dades: posicions, colors i profunditats de grup es recalcularan." & Environment.NewLine & "Vols continuar?"
+            Case "CONF_ORGANITZAR_MSG"  : Return "S'organitzarà tota la base de dades: posicions, colors i profunditats de grup es recalcularan (Ctrl+Z ho desfà)." & Environment.NewLine & "Vols continuar?"
             Case "STATUS_ESFERA_ON"     : Return "Esfera: visible"
             Case "STATUS_ESFERA_OFF"    : Return "Esfera: oculta"
             Case "STATUS_LLISTA_ON"     : Return "Llista: visible"
@@ -1343,6 +1345,7 @@ Public Module Locale
             Case "MENU_COPIAR"           : Return "[ 4 ]  COPIAR BASE DE DADES"
             Case "MNU_CONSULTAR_DADES"   : Return "Consultar dades..."
             Case "MNU_COPIAR_BD"         : Return "Copiar base de dades..."
+            Case "CMD_ORGANITZAR"      : Return "Organitzar per grups"
             Case Else : Return "[" & clau & "]"
         End Select
     End Function

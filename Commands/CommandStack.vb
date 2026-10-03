@@ -322,3 +322,55 @@ Public Class CmdEliminarCamp
     End Sub
 
 End Class
+
+' ════════════════════════════════════════════════════════════════
+' CmdOrganitzar — reorganització automàtica (posició, color i
+' profunditat de diverses taules) amb suport de Desfer/Refer.
+' ════════════════════════════════════════════════════════════════
+Public Class CmdOrganitzar
+    Implements ICmd
+
+    Private Class Estat
+        Public T As TablaBBDD
+        Public Antic As Single()      ' x, y, z, depth
+        Public AnticColor As GroupColor
+        Public Nou As Single()
+        Public NouColor As GroupColor
+    End Class
+
+    Private ReadOnly _estats As New List(Of Estat)()
+
+    ''' <summary>Registra el canvi d'una taula (l'estat actual es desa per a Desfer).</summary>
+    Public Sub Afegir(t As TablaBBDD, x As Single, y As Single, z As Single,
+                      color As GroupColor, depth As Single)
+        _estats.Add(New Estat With {
+            .T = t,
+            .Antic = {t.PosX, t.PosY, t.PosZ, t.Depth}, .AnticColor = t.GrupColor,
+            .Nou = {x, y, z, depth}, .NouColor = color})
+    End Sub
+
+    Public ReadOnly Property Desc As String Implements ICmd.Desc
+        Get
+            Return Locale.Str("CMD_ORGANITZAR")
+        End Get
+    End Property
+
+    Public Sub Execute() Implements ICmd.Execute
+        For Each e As Estat In _estats
+            Aplicar(e.T, e.Nou, e.NouColor)
+        Next
+    End Sub
+
+    Public Sub Undo() Implements ICmd.Undo
+        For Each e As Estat In _estats
+            Aplicar(e.T, e.Antic, e.AnticColor)
+        Next
+    End Sub
+
+    Private Shared Sub Aplicar(t As TablaBBDD, v As Single(), c As GroupColor)
+        t.SetPosition(v(0), v(1), v(2))
+        t.Depth = v(3)
+        t.GrupColor = c
+    End Sub
+
+End Class

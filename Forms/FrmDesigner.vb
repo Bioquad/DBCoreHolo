@@ -1034,7 +1034,27 @@ Public Class FrmDesigner
     ' ================================================================
 
     Private Sub MnuVeureTot_Click(s As Object, e As EventArgs)
-        If _proyecto Is Nothing OrElse _proyecto.Taules.Count = 0 Then Return
+        Dim v As Single() = CalcularVistaTot()
+        If v Is Nothing Then Return
+        _renderer.Zoom = v(0)
+        _renderer.OffX = v(1)
+        _renderer.OffY = v(2)
+        _renderer.VelX = 0.0F
+        _renderer.VelY = 0.0F
+        _velX = 0.0F
+        _velY = 0.0F
+
+        _glControl.Invalidate()
+        SetStatus(Locale.Str("STATUS_VISTA_TOT"))
+    End Sub
+
+    ''' <summary>
+    ''' Zoom i desplaçament perquè totes les taules càpiguen a la vista amb la
+    ''' rotació actual. Retorna {Zoom, OffX, OffY} o Nothing si no hi ha taules.
+    ''' No modifica la càmera.
+    ''' </summary>
+    Private Function CalcularVistaTot() As Single()
+        If _proyecto Is Nothing OrElse _proyecto.Taules.Count = 0 Then Return Nothing
         Dim w As Single = _glControl.Width
         Dim h As Single = _glControl.Height
         Dim cx As Single = w / 2.0F
@@ -1088,7 +1108,7 @@ Public Class FrmDesigner
 
         Dim sceneW As Single = maxX - minX
         Dim sceneH As Single = maxY - minY
-        If sceneW < 1 OrElse sceneH < 1 Then Return
+        If sceneW < 1 OrElse sceneH < 1 Then Return Nothing
 
         ' Factor de zoom per que tot càpiga amb 10% de marge
         Dim fitX As Single = (w * 0.90F) / sceneW
@@ -1098,24 +1118,11 @@ Public Class FrmDesigner
         If zoomNou > 50.0F  Then zoomNou = 50.0F
 
         ' Centrar: amb Zoom=1 i OffX/OffY=0, el centre del bbox és (bcx, bcy).
-        ' Quan apliquem zoomNou, la projecció escala les coordenades relatives
-        ' al centre de pantalla: screenX_nou = cx + (screenX_vell - cx) * zoomNou
-        ' Per tant centre del bbox amb nou zoom = cx + (bcx - cx) * zoomNou
-        ' Volem que aquest centre = cx → OffX = cx - [cx + (bcx-cx)*zoomNou]
-        '                                      = -(bcx - cx) * zoomNou
+        ' Amb el nou zoom: OffX = -(bcx - cx) * zoomNou
         Dim bcx As Single = (minX + maxX) / 2.0F
         Dim bcy As Single = (minY + maxY) / 2.0F
-        _renderer.OffX = -(bcx - cx) * zoomNou
-        _renderer.OffY = -(bcy - cy) * zoomNou
-        _renderer.Zoom = zoomNou
-        _renderer.VelX = 0.0F
-        _renderer.VelY = 0.0F
-        _velX = 0.0F
-        _velY = 0.0F
-
-        _glControl.Invalidate()
-        SetStatus(Locale.Str("STATUS_VISTA_TOT"))
-    End Sub
+        Return {zoomNou, -(bcx - cx) * zoomNou, -(bcy - cy) * zoomNou}
+    End Function
 
     Private Sub MnuOrganitzar_Click(s As Object, e As EventArgs)
         If _proyecto Is Nothing OrElse _proyecto.Taules.Count = 0 Then Return
@@ -1145,13 +1152,14 @@ Public Class FrmDesigner
     End Sub
 
     ''' <summary>
-    ''' Organitza en cercle Fibonacci només les taules del grup seleccionat (_grupSel),
-    ''' o si no hi ha grup, les taules relacionades amb la taula seleccionada.
-    ''' No toca cap altra taula del projecte.
-    ''' El hub (taula amb més relacions) queda al centre; la resta s'distribueix al voltant.
-    ''' Assigna un color de grup únic (no usat per taules externes al subconjunt).
+    ''' Reorganitza només les taules del grup seleccionat (_grupSel) o, si no n'hi
+    ''' ha, la taula seleccionada i les seves relacionades. La taula amb més
+    ''' relacions (hub) es queda on és i la resta es distribueix al seu voltant
+    ''' amb el mateix motor que "Organitzar per grups". Es pot desfer.
     ''' </summary>
     Private Sub OrganitzarGrupSeleccionat()
+        AturarAnimacio(True)
+
         ' Recollir IDs del subconjunt a organitzar
         Dim ids As New List(Of Integer)()
         If _grupSel.Count > 0 Then
@@ -1169,39 +1177,27 @@ Public Class FrmDesigner
         End If
         If ids.Count = 0 Then Return
 
-        ' Obtenir objectes TablaBBDD del subconjunt
         Dim subTaules As New List(Of TablaBBDD)()
         For Each t As TablaBBDD In _proyecto.Taules
             If ids.Contains(t.Id) Then subTaules.Add(t)
         Next
-        Dim m As Integer = subTaules.Count
-        If m = 0 Then Return
+        If subTaules.Count = 0 Then Return
 
-        ' ── Escollir color únic per al grup ──────────────────────────────
-        ' Palette ordenada per preferència visual (evitar blanc per a grups petits)
+        ' ── Color únic per al grup (no usat per cap taula de fora) ───────
         Dim pal() As GroupColor = {
             GroupColor.ColorOrange, GroupColor.ColorBlue,   GroupColor.ColorGreen,
             GroupColor.ColorYellow, GroupColor.ColorCyan,   GroupColor.ColorRed,
             GroupColor.ColorMagenta, GroupColor.ColorWhite}
-        ' Colors usats per taules FORA del subconjunt
         Dim usats As New HashSet(Of GroupColor)()
         For Each t As TablaBBDD In _proyecto.Taules
             If Not ids.Contains(t.Id) Then usats.Add(t.GrupColor)
         Next
-        ' Escollir el primer color lliure; si tots ocupats, reutilitzar el primer
         Dim colorTriat As GroupColor = pal(0)
         For Each gc As GroupColor In pal
-            If Not usats.Contains(gc) Then
-                colorTriat = gc
-                Exit For
-            End If
-        Next
-        ' Aplicar color a totes les taules del subconjunt
-        For Each t As TablaBBDD In subTaules
-            t.GrupColor = colorTriat
+            If Not usats.Contains(gc) Then colorTriat = gc : Exit For
         Next
 
-        ' ── Trobar hub = la del subconjunt amb més relacions totals ──────
+        ' ── Hub = la taula del subconjunt amb més relacions ──────────────
         Dim hub As TablaBBDD = subTaules(0)
         Dim hubRel As Integer = -1
         For Each t As TablaBBDD In subTaules
@@ -1212,282 +1208,148 @@ Public Class FrmDesigner
             If cnt > hubRel Then hubRel = cnt : hub = t
         Next
 
-        ' Centre = posició actual del hub (no mou el hub, distribueix al voltant)
-        Dim cx3 As Single = hub.PosX
-        Dim cy3 As Single = hub.PosY
-        Dim cz3 As Single = hub.PosZ
+        ' ── Distribució local, desplaçada perquè el hub no es mogui ──────
+        Dim res As OrganitzadorGrups.Resultat =
+            OrganitzadorGrups.Calcular(subTaules, _proyecto.Relacions, AddressOf MitjaMidaTaula)
+        Dim ph As Single() = res.Posicions(hub.Id)
+        Dim dx As Single = hub.PosX - ph(0), dy As Single = hub.PosY - ph(1)
 
-        ' Radi de distribució: proporcional al nombre de taules del subconjunt
-        Const AMP As Single = 121.0F
-        Dim rLocal As Single = If(m <= 2, AMP * 1.4F, AMP * 1.8F * CSng(Math.Sqrt(m - 1)) / CSng(Math.Sqrt(m)))
-
-        ' Distribuir les taules no-hub en cercle Fibonacci al voltant del hub
-        ' en el pla XY (mantenint Z del hub)
-        Dim altres As New List(Of TablaBBDD)()
+        Dim cmd As New CmdOrganitzar()
         For Each t As TablaBBDD In subTaules
-            If t.Id <> hub.Id Then altres.Add(t)
+            Dim p As Single() = res.Posicions(t.Id)
+            cmd.Afegir(t, p(0) + dx, p(1) + dy, hub.PosZ, colorTriat, If(t.Id = hub.Id, 1.0F, 0.75F))
         Next
-
-        For j As Integer = 0 To altres.Count - 1
-            Dim ang As Single = CSng(Math.PI * (1.0 + Math.Sqrt(5.0)) * (j + 1))
-            Dim r2  As Single = rLocal * CSng(Math.Sqrt(CDbl(j + 1) / CDbl(altres.Count)))
-            altres(j).PosX = cx3 + r2 * CSng(Math.Cos(ang))
-            altres(j).PosY = cy3 + r2 * CSng(Math.Sin(ang))
-            altres(j).PosZ = cz3
-            altres(j).Depth = 0.75F
-        Next
-        hub.Depth = 1.0F
-
-        ' Sincronitzar _taulaGrupId
+        AplicarAmbAnimacio(cmd, subTaules, False)
         RecalcularGrupId()
     End Sub
 
     Private Sub OrganitzarPerGrups()
+        AturarAnimacio(True)
         Dim taules As List(Of TablaBBDD) = _proyecto.Taules
-        Dim relacs  As List(Of RelacionBBDD) = _proyecto.Relacions
-        Dim n As Integer = taules.Count
-        If n = 0 Then Return
+        If taules.Count = 0 Then Return
 
-        Dim idxOf As New Dictionary(Of Integer, Integer)()
-        For i As Integer = 0 To n - 1 : idxOf(taules(i).Id) = i : Next
+        Dim res As OrganitzadorGrups.Resultat =
+            OrganitzadorGrups.Calcular(taules, _proyecto.Relacions, AddressOf MitjaMidaTaula)
 
-        ' Comptar relacions per taula
-        Dim relCnt As New Dictionary(Of Integer, Integer)()
-        For Each t2 As TablaBBDD In taules
-            Dim cnt As Integer = 0
-            For Each r2 As RelacionBBDD In relacs
-                If r2.TablaOrigenId = t2.Id OrElse r2.TablaDestinoId = t2.Id Then cnt += 1
-            Next
-            relCnt(t2.Id) = cnt
+        Dim cmd As New CmdOrganitzar()
+        For Each t As TablaBBDD In taules
+            Dim p As Single() = res.Posicions(t.Id)
+            ' Hub de cada grup ressaltat; la resta lleugerament atenuada
+            Dim depth As Single = If(res.Hubs.Contains(t.Id) OrElse res.Grup(t.Id) < 0, 1.0F, 0.75F)
+            cmd.Afegir(t, p(0), p(1), p(2), res.Colors(t.Id), depth)
+        Next
+        AplicarAmbAnimacio(cmd, taules, True)
+
+        ' Sincronitzar _taulaGrupId (selecció rectangular per grups)
+        _taulaGrupId.Clear()
+        For Each t As TablaBBDD In taules
+            _taulaGrupId(t.Id) = res.Grup(t.Id)
+        Next
+    End Sub
+
+    ' Mida d'una taula en unitats del món (mitja amplada, mitja alçada), la
+    ' mateixa que fa servir el renderer per dibuixar-la
+    Private Function MitjaMidaTaula(t As TablaBBDD) As SizeF
+        Return New SizeF(_renderer.CalcularHalfWPublic(t),
+                         (16.8F + t.Fields.Count * 13.2F + 4.8F) / 2.0F)
+    End Function
+
+    ' ════════════════════════════════════════════════════════════════
+    ' ANIMACIÓ DE TRANSICIÓ (organitzar)
+    ' Les taules es desplacen suaument fins a la nova posició i, si es
+    ' demana, la càmera es posa de cara al diagrama i l'enquadra.
+    ' ════════════════════════════════════════════════════════════════
+    Private _animTaules As List(Of Tuple(Of TablaBBDD, Single(), Single()))   ' taula, inici, fi
+    Private _animCam0 As Single()       ' RotX, RotY, Zoom, OffX, OffY
+    Private _animCam1 As Single()
+    Private _animInici As DateTime
+    Private Const ANIM_MS As Double = 700
+
+    ''' <summary>
+    ''' Executa la comanda (queda a l'historial de Desfer) i anima les taules des
+    ''' de la posició actual fins a la nova.
+    ''' </summary>
+    Private Sub AplicarAmbAnimacio(cmd As CmdOrganitzar, taules As List(Of TablaBBDD), ajustarCamera As Boolean)
+        Dim inici As New Dictionary(Of TablaBBDD, Single())()
+        For Each t As TablaBBDD In taules
+            inici(t) = {t.PosX, t.PosY, t.PosZ}
         Next
 
-        ' Adjacencia
-        Dim veins(n - 1) As HashSet(Of Integer)
-        For i As Integer = 0 To n - 1 : veins(i) = New HashSet(Of Integer)() : Next
-        For Each relC As RelacionBBDD In relacs
-            If Not idxOf.ContainsKey(relC.TablaOrigenId) Then Continue For
-            If Not idxOf.ContainsKey(relC.TablaDestinoId) Then Continue For
-            Dim ia As Integer = idxOf(relC.TablaOrigenId)
-            Dim ib As Integer = idxOf(relC.TablaDestinoId)
-            If ia <> ib Then veins(ia).Add(ib) : veins(ib).Add(ia)
+        CommandStack.Push(cmd)      ' aplica les posicions, colors i profunditats finals
+
+        _animTaules = New List(Of Tuple(Of TablaBBDD, Single(), Single()))()
+        For Each t As TablaBBDD In taules
+            _animTaules.Add(Tuple.Create(t, inici(t), New Single() {t.PosX, t.PosY, t.PosZ}))
         Next
 
-        ' Label Propagation (seed fix)
-        Dim lbl(n - 1) As Integer
-        For i As Integer = 0 To n - 1 : lbl(i) = i : Next
-        Dim rnd As New Random(42)
-        For iter As Integer = 0 To 50
-            Dim ordre As Integer() = System.Linq.Enumerable.Range(0, n).ToArray()
-            For i As Integer = n - 1 To 1 Step -1
-                Dim j As Integer = rnd.Next(i + 1)
-                Dim tmp As Integer = ordre(i) : ordre(i) = ordre(j) : ordre(j) = tmp
-            Next
-            Dim canvi As Boolean = False
-            For Each i As Integer In ordre
-                If veins(i).Count = 0 Then Continue For
-                Dim freq As New Dictionary(Of Integer, Integer)()
-                For Each v As Integer In veins(i)
-                    Dim lv As Integer = lbl(v)
-                    If Not freq.ContainsKey(lv) Then freq(lv) = 0
-                    freq(lv) += 1
-                Next
-                Dim bestL As Integer = lbl(i) : Dim bestF As Integer = 0
-                For Each kv As KeyValuePair(Of Integer, Integer) In freq
-                    If kv.Value > bestF Then bestF = kv.Value : bestL = kv.Key
-                Next
-                If bestL <> lbl(i) Then lbl(i) = bestL : canvi = True
-            Next
-            If Not canvi Then Exit For
-        Next
-
-        ' Grups ordenats per mida desc
-        Dim freqG As New Dictionary(Of Integer, Integer)()
-        For i As Integer = 0 To n - 1
-            If veins(i).Count = 0 Then Continue For
-            If Not freqG.ContainsKey(lbl(i)) Then freqG(lbl(i)) = 0
-            freqG(lbl(i)) += 1
-        Next
-        Dim sortedG As New List(Of KeyValuePair(Of Integer, Integer))(freqG)
-        sortedG.Sort(Function(a2, b2) b2.Value.CompareTo(a2.Value))
-        Dim l2g As New Dictionary(Of Integer, Integer)()
-        For gi As Integer = 0 To sortedG.Count - 1 : l2g(sortedG(gi).Key) = gi : Next
-        Dim nGrupsRels As Integer = sortedG.Count
-        Dim AILLADES As Integer = nGrupsRels
-        Dim nGrups As Integer = nGrupsRels + 1
-
-        Dim taulaGrup(n - 1) As Integer
-        For i As Integer = 0 To n - 1
-            taulaGrup(i) = If(veins(i).Count = 0, AILLADES, l2g(lbl(i)))
-        Next
-        Dim gLlistes(nGrups - 1) As List(Of Integer)
-        For gi As Integer = 0 To nGrups - 1 : gLlistes(gi) = New List(Of Integer)() : Next
-        For i As Integer = 0 To n - 1 : gLlistes(taulaGrup(i)).Add(i) : Next
-        If gLlistes(AILLADES).Count = 0 Then nGrups = nGrupsRels
-
-        ' Colors greedy
-        Dim pal() As GroupColor = {
-            GroupColor.ColorRed,    GroupColor.ColorBlue,  GroupColor.ColorGreen,
-            GroupColor.ColorYellow, GroupColor.ColorCyan,  GroupColor.ColorMagenta,
-            GroupColor.ColorOrange, GroupColor.ColorWhite}
-        Dim gAdj As New Dictionary(Of Integer, HashSet(Of Integer))()
-        For gi As Integer = 0 To nGrups - 1 : gAdj(gi) = New HashSet(Of Integer)() : Next
-        For Each relAdj As RelacionBBDD In relacs
-            If Not idxOf.ContainsKey(relAdj.TablaOrigenId) Then Continue For
-            If Not idxOf.ContainsKey(relAdj.TablaDestinoId) Then Continue For
-            Dim ga As Integer = taulaGrup(idxOf(relAdj.TablaOrigenId))
-            Dim gb As Integer = taulaGrup(idxOf(relAdj.TablaDestinoId))
-            If ga <> gb Then gAdj(ga).Add(gb) : gAdj(gb).Add(ga)
-        Next
-        Dim gCol(nGrups - 1) As Integer
-        For gi As Integer = 0 To nGrups - 1
-            Dim used As New HashSet(Of Integer)()
-            For Each nb As Integer In gAdj(gi)
-                If nb < gi Then used.Add(gCol(nb))
-            Next
-            Dim col As Integer = 0
-            While used.Contains(col) AndAlso col < pal.Length - 1 : col += 1 : End While
-            gCol(gi) = col
-        Next
-        If nGrups > nGrupsRels Then gCol(AILLADES) = 7
-
-        ' Hub i colors
-        Dim hubOf(nGrups - 1) As Integer
-        Dim hubC(nGrups - 1)  As Integer
-        For i As Integer = 0 To nGrups - 1 : hubC(i) = -1 : Next
-        For i As Integer = 0 To n - 1
-            Dim gi As Integer = taulaGrup(i)
-            If relCnt(taules(i).Id) > hubC(gi) Then
-                hubC(gi) = relCnt(taules(i).Id) : hubOf(gi) = i
+        _animCam0 = Nothing : _animCam1 = Nothing
+        _velX = 0.0F : _velY = 0.0F
+        _renderer.VelX = 0.0F : _renderer.VelY = 0.0F
+        If ajustarCamera Then
+            ' Vista frontal (girs sencers mantinguts per no fer voltes) i enquadrament
+            Dim rotX0 As Single = _renderer.RotX, rotY0 As Single = _renderer.RotY
+            Dim rotY1 As Single = CSng(Math.Round(rotY0 / (2 * Math.PI)) * 2 * Math.PI)
+            Dim rotX1 As Single = 0.15F
+            _renderer.RotX = rotX1 : _renderer.RotY = rotY1
+            Dim v As Single() = CalcularVistaTot()
+            _renderer.RotX = rotX0 : _renderer.RotY = rotY0
+            If v IsNot Nothing Then
+                _animCam0 = {rotX0, rotY0, _renderer.Zoom, _renderer.OffX, _renderer.OffY}
+                _animCam1 = {rotX1, rotY1, v(0), v(1), v(2)}
             End If
-        Next
-        For i As Integer = 0 To n - 1
-            Dim gi As Integer = taulaGrup(i)
-            taules(i).GrupColor = pal(gCol(gi) Mod pal.Length)
-            taules(i).Depth = If(i = hubOf(gi), 1.0F, 0.75F)
-        Next
-
-        ' ── POSICIONS ────────────────────────────────────────────────
-        ' Amplada real d'una taula en unitats 3D:
-        '   67.2 * (fov+400)/fov = 67.2 * 900/500 = 121 unitats
-        Const AMP As Single = 121.0F
-
-        ' Distància entre taules del mateix grup: 1 amplada
-        Dim dT As Single = AMP * 1.8F    ' 1.8 amplades entre taules del grup
-
-        ' Distància entre centres de grups: 4 amplades + radi grup mes gran
-        ' (calculem el radi real despres de distribuir les taules)
-
-        ' ── Distribuir taules de cada grup en Fibonacci sphere local ──
-        ' Cada grup té el seu mini-Fibonacci centrat a (0,0,0)
-        ' Radi local: creix amb nombre de taules del grup
-        Dim posXr(n - 1) As Single
-        Dim posYr(n - 1) As Single
-        Dim posZr(n - 1) As Single
-        Dim gRadiReal(nGrupsRels - 1) As Single
-
-        For gi As Integer = 0 To nGrupsRels - 1
-            Dim idxList As List(Of Integer) = gLlistes(gi)
-            Dim m As Integer = idxList.Count
-            If m = 0 Then Continue For
-
-            ' Ordenar: hub primer, resta per relacions desc
-            Dim sorted As New List(Of Integer)(idxList)
-            sorted.Sort(Function(a2, b2) relCnt(taules(b2).Id).CompareTo(relCnt(taules(a2).Id)))
-            Dim hIdx As Integer = hubOf(gi)
-            sorted.Remove(hIdx) : sorted.Insert(0, hIdx)
-
-            ' Radi fix: totes les taules a 1 amplada del hub, sempre
-            Dim rLocal As Single = If(m = 1, 0.0F, dT)
-
-            For j As Integer = 0 To m - 1
-                Dim idx As Integer = sorted(j)
-                If j = 0 Then
-                    posXr(idx) = 0.0F : posYr(idx) = 0.0F : posZr(idx) = 0.0F
-                Else
-                    ' Fibonacci 2D en el pla XY (Z=0 sempre)
-                    Dim ang2D As Single = CSng(Math.PI * (1.0 + Math.Sqrt(5.0)) * j)
-                    Dim r2D   As Single = rLocal * CSng(Math.Sqrt(CSng(j) / CSng(m - 1)))
-                    posXr(idx) = r2D * CSng(Math.Cos(ang2D))
-                    posYr(idx) = r2D * CSng(Math.Sin(ang2D))
-                    posZr(idx) = 0.0F
-                End If
-            Next
-
-            ' Radi real del grup = distancia maxima al hub
-            Dim rmax2 As Single = 0
-            For Each idx As Integer In idxList
-                Dim d2 As Single = CSng(Math.Sqrt(posXr(idx)*posXr(idx)+posYr(idx)*posYr(idx)+posZr(idx)*posZr(idx)))
-                If d2 > rmax2 Then rmax2 = d2
-            Next
-            gRadiReal(gi) = rmax2
-        Next
-
-        ' ── Centres de grups en Fibonacci sphere principal ────────────
-        ' Distancia entre centres = 4 amplades + radi dels dos grups
-        Dim radMax3 As Single = 0
-        For gi As Integer = 0 To nGrupsRels - 1
-            If gRadiReal(gi) > radMax3 Then radMax3 = gRadiReal(gi)
-        Next
-        ' Separació entre grups: diàmetre del grup mes gran + 2 amplades de marge
-        Dim mMax As Integer = 1
-        For gi As Integer = 0 To nGrupsRels - 1
-            If gLlistes(gi).Count > mMax Then mMax = gLlistes(gi).Count
-        Next
-        Dim radiGrupMax As Single = If(mMax <= 1, dT, CSng(Math.Sqrt(mMax)) * dT * 0.6F)
-        Dim dGrups As Single = radiGrupMax * 2.0F + AMP * 2.0F
-
-        ' Rgrups fix = dGrups
-        Dim Rgrups As Single = If(nGrupsRels <= 1, 0.0F, dGrups)
-
-        ' Centres de grups en Fibonacci 2D (XY), Z=0 per evitar deformació perspectiva
-        Dim gcx2(nGrupsRels - 1) As Single
-        Dim gcy2(nGrupsRels - 1) As Single
-        Dim gcz2(nGrupsRels - 1) As Single
-        For gi As Integer = 0 To nGrupsRels - 1
-            If nGrupsRels = 1 Then
-                gcx2(0) = 0 : gcy2(0) = 0 : gcz2(0) = 0
-            Else
-                Dim phi4   As Single = CSng(Math.Acos(1.0 - 2.0 * (gi + 0.5) / nGrupsRels))
-                Dim theta4 As Single = CSng(Math.PI * (1.0 + Math.Sqrt(5.0)) * gi)
-                ' XY: distribució Fibonacci completa
-                gcx2(gi) = Rgrups * CSng(Math.Sin(phi4) * Math.Cos(theta4))
-                gcy2(gi) = Rgrups * CSng(Math.Cos(phi4))
-                ' Z: limitat a ±15% del radi — profunditat suau, mai distorsiona
-                Dim rawZ As Single = Rgrups * CSng(Math.Sin(phi4) * Math.Sin(theta4))
-                gcz2(gi) = Math.Max(-Rgrups * 0.15F, Math.Min(Rgrups * 0.15F, rawZ))
-            End If
-        Next
-
-        ' Aplicar: posicions taules = centre grup + offset local en pla XY
-        ' Z local: petita variació per donar profunditat visual sense deformar
-        For gi As Integer = 0 To nGrupsRels - 1
-            For Each idx As Integer In gLlistes(gi)
-                taules(idx).PosX = gcx2(gi) + posXr(idx)
-                taules(idx).PosY = gcy2(gi) + posYr(idx)
-                taules(idx).PosZ = gcz2(gi)   ' Z del centre, taules del grup al mateix pla
-                taules(idx).Depth = If(idx = hubOf(gi), 1.0F, 0.75F)
-            Next
-        Next
-
-        ' Taules aillades: columna a la dreta
-        If nGrups > nGrupsRels AndAlso gLlistes(AILLADES).Count > 0 Then
-            Dim ailList As List(Of Integer) = gLlistes(AILLADES)
-            Dim colXa As Single = Rgrups + radMax3 + AMP * 4.0F
-            Dim espVa As Single = AMP * 1.2F
-            Dim totHa As Single = (ailList.Count - 1) * espVa
-            For j As Integer = 0 To ailList.Count - 1
-                taules(ailList(j)).PosX = colXa
-                taules(ailList(j)).PosY = -totHa/2.0F + j*espVa
-                taules(ailList(j)).PosZ = 0.0F
-            Next
         End If
 
-        ' ── Sincronitzar _taulaGrupId amb els grups calculats ──────────
-        ' Permet que la selecció rectangular identifiqui correctament els grups.
-        _taulaGrupId.Clear()
-        For i As Integer = 0 To n - 1
-            _taulaGrupId(taules(i).Id) = taulaGrup(i)
+        ' Tornar a la posició inicial: l'animació les portarà a la final
+        For Each a As Tuple(Of TablaBBDD, Single(), Single()) In _animTaules
+            a.Item1.SetPosition(a.Item2(0), a.Item2(1), a.Item2(2))
         Next
+        _animInici = DateTime.Now
+        _glControl.Invalidate()
+    End Sub
+
+    ' Avança l'animació (cridat pel temporitzador de dibuix)
+    Private Sub AvancarAnimacio()
+        If _animTaules Is Nothing Then Return
+        Dim p As Double = Math.Min(1.0, (DateTime.Now - _animInici).TotalMilliseconds / ANIM_MS)
+        If p >= 1.0 Then
+            AturarAnimacio(True)
+            Return
+        End If
+        ' Corba suau (ease-in-out cúbica)
+        Dim e As Single = CSng(If(p < 0.5, 4 * p * p * p, 1 - Math.Pow(-2 * p + 2, 3) / 2))
+        For Each a As Tuple(Of TablaBBDD, Single(), Single()) In _animTaules
+            a.Item1.SetPosition(a.Item2(0) + (a.Item3(0) - a.Item2(0)) * e,
+                                a.Item2(1) + (a.Item3(1) - a.Item2(1)) * e,
+                                a.Item2(2) + (a.Item3(2) - a.Item2(2)) * e)
+        Next
+        If _animCam1 IsNot Nothing Then AplicarCamera(_animCam0, _animCam1, e)
+    End Sub
+
+    ''' <summary>
+    ''' Atura l'animació en curs. acabar=True deixa les taules a la posició final
+    ''' (p.ex. si l'usuari clica o desa); False les deixa on són (Desfer/Refer
+    ''' les posarà on toca).
+    ''' </summary>
+    Private Sub AturarAnimacio(acabar As Boolean)
+        If _animTaules Is Nothing Then Return
+        If acabar Then
+            For Each a As Tuple(Of TablaBBDD, Single(), Single()) In _animTaules
+                a.Item1.SetPosition(a.Item3(0), a.Item3(1), a.Item3(2))
+            Next
+            If _animCam1 IsNot Nothing Then AplicarCamera(_animCam0, _animCam1, 1.0F)
+        End If
+        _animTaules = Nothing
+        _animCam0 = Nothing : _animCam1 = Nothing
+        _glControl.Invalidate()
+    End Sub
+
+    Private Sub AplicarCamera(c0 As Single(), c1 As Single(), e As Single)
+        _renderer.RotX = c0(0) + (c1(0) - c0(0)) * e
+        _renderer.RotY = c0(1) + (c1(1) - c0(1)) * e
+        ' El zoom s'interpola en escala logarítmica (canvi de mida uniforme)
+        _renderer.Zoom = CSng(Math.Exp(Math.Log(c0(2)) + (Math.Log(c1(2)) - Math.Log(c0(2))) * e))
+        _renderer.OffX = c0(3) + (c1(3) - c0(3)) * e
+        _renderer.OffY = c0(4) + (c1(4) - c0(4)) * e
     End Sub
 
     ''' <summary>
@@ -2201,6 +2063,7 @@ Public Class FrmDesigner
     End Sub
 
     Private Sub RenderTimer_Tick(s As Object, e As EventArgs) Handles _renderTimer.Tick
+        AvancarAnimacio()
         ' Inèrcia de rotació: aplicar velocitat i frenar (separada del dibuix)
         If Not _orbit Then
             If Math.Abs(_velX) > 0.0001F OrElse Math.Abs(_velY) > 0.0001F Then
@@ -2240,6 +2103,7 @@ Public Class FrmDesigner
     End Sub
 
     Private Sub GL_MouseDown(s As Object, e As MouseEventArgs)
+        AturarAnimacio(True)
         _lastMX = e.X
         _lastMY = e.Y
 
@@ -3095,6 +2959,7 @@ Public Class FrmDesigner
     End Sub
 
     Private Sub MnuDesar_Click(s As Object, e As EventArgs)
+        AturarAnimacio(True)
         If String.IsNullOrEmpty(_rutaFitxer) Then
             MnuDesarCom_Click(s, e)
             Return
@@ -3590,6 +3455,7 @@ Public Class FrmDesigner
     End Sub
 
     Private Sub MnuUndo_Click(s As Object, e As EventArgs)
+        AturarAnimacio(False)
         CommandStack.UndoLast()
         ' No cridem DistribuirTaules: respectem les posicions restaurades per la comanda Undo
         ActualitzarPanellLateral()
@@ -3599,6 +3465,7 @@ Public Class FrmDesigner
     End Sub
 
     Private Sub MnuRedo_Click(s As Object, e As EventArgs)
+        AturarAnimacio(False)
         CommandStack.RedoLast()
         ' No cridem DistribuirTaules: respectem les posicions restaurades per la comanda Redo
         ActualitzarPanellLateral()
@@ -4278,6 +4145,7 @@ Public Class FrmDesigner
         If Not FrmOpcions.Opcions.AutoDesarActiu Then Return
         If String.IsNullOrEmpty(_rutaFitxer) Then Return
         If Not _modificat Then Return          ' res a desar
+        AturarAnimacio(True)
         If Not Me.Enabled Then Return          ' hi ha una operació llarga en curs
         Try
             ProjectSerializer.Desar(_proyecto, _rutaFitxer)

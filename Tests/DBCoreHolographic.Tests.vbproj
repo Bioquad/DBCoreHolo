@@ -23,6 +23,7 @@
     <Compile Include="..\Commands\*.vb" LinkBase="Core\Commands" />
     <Compile Include="..\Export\*.vb" LinkBase="Core\Export" />
     <Compile Include="..\Imports\*.vb" LinkBase="Core\Imports" />
+    <Compile Include="..\Graphics\OrganitzadorGrups.vb" LinkBase="Core\Graphics" />
   </ItemGroup>
 
   <ItemGroup>
