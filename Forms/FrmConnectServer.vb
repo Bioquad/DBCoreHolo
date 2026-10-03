@@ -51,9 +51,14 @@ Public Class FrmConnectServer
     ' Connexió entrada (per preomplir si hi havia una connexió prèvia)
     Private _connPrevia As SqlServerConnector.ConnexioServidor
 
-    Public Sub New(Optional connPrevia As SqlServerConnector.ConnexioServidor = Nothing)
+    ' True → només cal el servidor (p.ex. per crear-hi una BD nova); la BD és opcional
+    Private ReadOnly _nomesServidor As Boolean
+
+    Public Sub New(Optional connPrevia As SqlServerConnector.ConnexioServidor = Nothing,
+                   Optional nomesServidor As Boolean = False)
         MyBase.New()
         _connPrevia = connPrevia
+        _nomesServidor = nomesServidor
 
         Me.Text          = Locale.Str("CON_TITOL")
         Me.ClientSize    = New Size(520, 390)
@@ -304,7 +309,7 @@ Public Class FrmConnectServer
             SetStatus(Locale.Str("CON_ERR_SERVIDOR"), AppStyle.ColPerill)
             Return
         End If
-        If String.IsNullOrEmpty(conn.BaseDades) Then
+        If String.IsNullOrEmpty(conn.BaseDades) AndAlso Not _nomesServidor Then
             SetStatus(Locale.Str("CON_ERR_BD"), AppStyle.ColPerill)
             Return
         End If

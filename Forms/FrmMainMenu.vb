@@ -56,8 +56,10 @@ Public Class FrmMainMenu
         AfegirLabel(_pnlMain, Locale.Str("MENU_SELECCIONA"), 0, 0)
         AfegirBoto(_pnlMain, Locale.Str("MENU_CARREGAR"), 0, 22, AddressOf Btn1_Click)
         AfegirBoto(_pnlMain, Locale.Str("MENU_NOU"), 0, 58, AddressOf Btn2_Click)
-        AfegirBoto(_pnlMain, Locale.Str("MENU_OPCIONS"), 0, 94, AddressOf Btn3_Click)
-        AfegirBoto(_pnlMain, Locale.Str("MENU_SORTIR"), 0, 130, AddressOf Btn4_Click)
+        AfegirBoto(_pnlMain, Locale.Str("MENU_CONSULTAR"), 0, 94, AddressOf BtnConsultar_Click)
+        AfegirBoto(_pnlMain, Locale.Str("MENU_COPIAR"), 0, 130, AddressOf BtnCopiar_Click)
+        AfegirBoto(_pnlMain, Locale.Str("MENU_OPCIONS"), 0, 166, AddressOf Btn3_Click)
+        AfegirBoto(_pnlMain, Locale.Str("MENU_SORTIR"), 0, 202, AddressOf Btn4_Click)
         Me.Controls.Add(_pnlMain)
 
         _pnlCarregar = New Panel()
@@ -271,6 +273,27 @@ Public Class FrmMainMenu
 
     Private Sub Btn4_Click(s As Object, e As EventArgs)
         Application.Exit()
+    End Sub
+
+    ' Última connexió a servidor feta servir des del menú (es proposa de nou)
+    Private _connServidor As SqlServerConnector.ConnexioServidor
+
+    ' ── [3] Consultar dades d'una BD (fitxer o servidor) ─────────
+    Private Sub BtnConsultar_Click(s As Object, e As EventArgs)
+        Using dlg As New FrmOrigenBD(_connServidor)
+            If dlg.ShowDialog(Me) <> DialogResult.OK Then Return
+            If dlg.ConnexioServidor IsNot Nothing Then _connServidor = dlg.ConnexioServidor
+            Using frm As New FrmConsultaDades(dlg.Resultat)
+                frm.ShowDialog(Me)
+            End Using
+        End Using
+    End Sub
+
+    ' ── [4] Copiar una BD sencera ───────────────────────────────
+    Private Sub BtnCopiar_Click(s As Object, e As EventArgs)
+        Using frm As New FrmCopiaBD(Nothing, _connServidor)
+            frm.ShowDialog(Me)
+        End Using
     End Sub
 
     Private Sub BtnTornar_Click(s As Object, e As EventArgs)
@@ -506,7 +529,13 @@ Public Class FrmMainMenu
                 MostrarPanel(_pnlCarregar)
             Case Keys.D2, Keys.NumPad2
                 MostrarPanel(_pnlNou)
+            Case Keys.D3, Keys.NumPad3
+                If _pnlMain.Visible Then BtnConsultar_Click(Me, EventArgs.Empty)
             Case Keys.D4, Keys.NumPad4
+                If _pnlMain.Visible Then BtnCopiar_Click(Me, EventArgs.Empty)
+            Case Keys.D5, Keys.NumPad5
+                If _pnlMain.Visible Then Btn3_Click(Me, EventArgs.Empty)
+            Case Keys.D6, Keys.NumPad6
                 Application.Exit()
             Case Keys.Escape
                 MostrarPanel(_pnlMain)

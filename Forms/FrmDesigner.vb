@@ -216,6 +216,9 @@ Public Class FrmDesigner
         mArxiu.DropDownItems.Add(New ToolStripSeparator())
         AfegirSubMenu(mArxiu, Locale.Str("MNU_SERVIDOR"),     AddressOf MnuServidor_Click)
         AfegirSubMenu(mArxiu, Locale.Str("MNU_ACCIONS_SRV"),  AddressOf MnuAccionsServidor_Click)
+        mArxiu.DropDownItems.Add(New ToolStripSeparator())
+        AfegirSubMenu(mArxiu, Locale.Str("MNU_CONSULTAR_DADES"), AddressOf MnuConsultarDades_Click)
+        AfegirSubMenu(mArxiu, Locale.Str("MNU_COPIAR_BD"),       AddressOf MnuCopiarBD_Click)
         _menuStrip.Items.Add(mArxiu)
 
         Dim mModel As New ToolStripMenuItem(Locale.Str("MNU_MODEL"))
@@ -335,6 +338,9 @@ Public Class FrmDesigner
         mArxiu.DropDownItems.Add(New ToolStripSeparator())
         AfegirSubMenu(mArxiu, Locale.Str("MNU_SERVIDOR"),     AddressOf MnuServidor_Click)
         AfegirSubMenu(mArxiu, Locale.Str("MNU_ACCIONS_SRV"),  AddressOf MnuAccionsServidor_Click)
+        mArxiu.DropDownItems.Add(New ToolStripSeparator())
+        AfegirSubMenu(mArxiu, Locale.Str("MNU_CONSULTAR_DADES"), AddressOf MnuConsultarDades_Click)
+        AfegirSubMenu(mArxiu, Locale.Str("MNU_COPIAR_BD"),       AddressOf MnuCopiarBD_Click)
         _menuStrip.Items.Add(mArxiu)
 
         Dim mModel As New ToolStripMenuItem(Locale.Str("MNU_MODEL"))
@@ -3227,6 +3233,24 @@ Public Class FrmDesigner
                                     Locale.Str("DLG_ERROR_TITOL"), MessageBoxButtons.OK, MessageBoxIcon.Error)
                 End If
             End If
+        End Using
+    End Sub
+
+    ' ── Consultar les dades d'una BD existent (fitxer o servidor) ─
+    Private Sub MnuConsultarDades_Click(s As Object, e As EventArgs)
+        Using dlg As New FrmOrigenBD(_connServidor)
+            If dlg.ShowDialog(Me) <> DialogResult.OK Then Return
+            If dlg.ConnexioServidor IsNot Nothing Then _connServidor = dlg.ConnexioServidor
+            Using frm As New FrmConsultaDades(dlg.Resultat)
+                frm.ShowDialog(Me)
+            End Using
+        End Using
+    End Sub
+
+    ' ── Copiar una BD sencera (estructura, objectes i dades) ─────
+    Private Sub MnuCopiarBD_Click(s As Object, e As EventArgs)
+        Using frm As New FrmCopiaBD(Nothing, _connServidor)
+            frm.ShowDialog(Me)
         End Using
     End Sub
 

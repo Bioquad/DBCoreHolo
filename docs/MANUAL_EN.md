@@ -17,10 +17,11 @@ Complete guide to using the application. For installation and compilation instru
 9. [Model Validation](#9-model-validation)
 10. [Importing](#10-importing)
 11. [Exporting](#11-exporting)
-12. [Options](#12-options)
-13. [Keyboard Shortcuts](#13-keyboard-shortcuts)
-14. [The .hdb Format and Auto-save](#14-the-hdb-format-and-auto-save)
-15. [Troubleshooting](#15-troubleshooting)
+12. [Querying Data and Copying Databases](#12-querying-data-and-copying-databases)
+13. [Options](#13-options)
+14. [Keyboard Shortcuts](#14-keyboard-shortcuts)
+15. [The .hdb Format and Auto-save](#15-the-hdb-format-and-auto-save)
+16. [Troubleshooting](#16-troubleshooting)
 
 ---
 
@@ -44,8 +45,10 @@ Navigate using either the mouse or **direct numeric keys** (no need to press Ent
 |---|---|
 | **[ 1 ] Load structure from disk** | Opens the loading submenu |
 | **[ 2 ] Start new data core** | New project (SQL engine selection) |
-| **[ 3 ] Configure parameters** | Application options |
-| **[ 4 ] Exit to operating system** | Closes the application |
+| **[ 3 ] Query data** | Browse the data of tables/views and run read-only SQL queries |
+| **[ 4 ] Copy database** | Full copy of a database (structure, queries and data) |
+| **[ 5 ] Configure parameters** | Application options |
+| **[ 6 ] Exit to operating system** | Closes the application |
 
 ### Loading Submenu
 
@@ -287,9 +290,41 @@ All destructive or creation-level operations prompt a **prior confirmation**.
 
 ---
 
-## 12. Options
+## 12. Querying Data and Copying Databases
 
-Accessible from the main menu via *[ 3 ] Configure parameters* or from within the designer. Available settings include:
+Both tools work directly on an existing SQL Server database — an **.mdf file on disk** (opened through LocalDB) or a **database on a server** — without opening it in the designer. They are available from the main menu (*[ 3 ]* and *[ 4 ]*) and from the designer's **File** menu.
+
+### Query data
+
+1. Choose the database (.mdf file or server connection).
+2. The left panel lists all **tables and views** with their approximate row count. Tick one or several (or double-click one) and press **QUERY SELECTED** (or **F5**). Each one opens in its own tab, limited to the *Max rows* value (1000 by default); the status bar shows how many rows are displayed out of the total.
+3. The **SQL query** tab lets you write any query (SELECT, JOIN, aggregations...). Press **RUN (F5)**; if text is selected, only the selection runs. Every result set appears in its own tab.
+4. **EXPORT CSV** saves the active tab as CSV (UTF-8, `;` separator, ready for Excel).
+
+> The viewer is **read-only**: queries run inside a transaction that is always rolled back, and transaction commands (`COMMIT`, `ROLLBACK`, `BEGIN TRAN`...) are refused. Binary values are shown as hexadecimal; `geography`, `geometry` and `hierarchyid` columns are shown as text. Middle-click a tab to close it.
+
+### Copy database
+
+1. **SOURCE**: choose the database to copy (.mdf file or server database).
+2. **DESTINATION**: type the name of the new database and choose either a **new .mdf file** (folder) or a **new database on a server** (here you only need to connect to the server, not choose a database).
+3. Press **COPY**. The log shows each step.
+
+What is copied: the complete structure (exact data types, collations, identity, computed columns, defaults, PK/UNIQUE/FK — including multi-column keys —, indexes with INCLUDE and filters, CHECK constraints), **views, stored procedures, functions and triggers**, sequences, user-defined types, synonyms, descriptions, and **all the data**.
+
+The method is chosen automatically:
+
+| Case | Method | Result |
+|---|---|---|
+| Same SQL Server instance (e.g. .mdf → .mdf, or two databases on the same server) | `BACKUP … COPY_ONLY` + `RESTORE … WITH MOVE` | Exact copy of everything, including users and permissions |
+| Different instances (e.g. server → .mdf, or between two servers) | Structure recreated from the catalog + data with `SqlBulkCopy` | Everything listed above; users/permissions, CLR assemblies and full-text indexes are not copied and are listed as warnings |
+
+If you lack BACKUP/RESTORE permission, the transfer method is used automatically. **Nothing is ever overwritten**: if the destination database or files already exist the copy stops, and if anything fails the incomplete copy is removed. A new .mdf file is left **detached** from LocalDB so it can be moved or opened later.
+
+---
+
+## 13. Options
+
+Accessible from the main menu via *[ 5 ] Configure parameters* or from within the designer. Available settings include:
 
 - **Color Theme**: Orange (default), Green, Cyan, or White against a dark background.
 - **Font Size**: Small, Normal, or Large.
@@ -301,7 +336,7 @@ Preferences are saved to `%AppData%\DBCoreHolographic\opcions.json` (always writ
 
 ---
 
-## 13. Keyboard Shortcuts
+## 14. Keyboard Shortcuts
 
 | Shortcut | Action |
 |---|---|
@@ -309,17 +344,18 @@ Preferences are saved to `%AppData%\DBCoreHolographic\opcions.json` (always writ
 | **Ctrl+O** | Open .hdb project |
 | **Ctrl+S** | Save |
 | **Ctrl+Shift+S** | Save As... |
-| **Ctrl+Z** | Undo (up to 50 operations) |
+| **Ctrl+Z** | Undo (50 operations by default, configurable in Options) |
 | **Ctrl+Y** | Redo |
 | **Ins** | New table |
 | **Del** | Delete selected item (Field → Relationship → Table, depending on context) |
 | **↑ / ↓** | Navigate the side list or the active table's fields |
 | **Enter** | Confirm selection / open the editor for the selected field |
 | **Escape** | Cancel dialog / return to the previous menu |
+| **F5** (data viewer) | Query the selected tables, or run the SQL query |
 
 ---
 
-## 14. The .hdb Format and Auto-save
+## 15. The .hdb Format and Auto-save
 
 Projects are saved as **indented UTF-8 JSON**: tracking project name, SQL engine, timestamps, camera state (rotation, zoom, and panning), alongside the complete definition of tables (with all field attributes) and relationships. When you reopen a project, the camera viewport is restored exactly where you left it.
 
@@ -330,7 +366,7 @@ Being flat JSON, `.hdb` files are highly Git-friendly, meaning schema modificati
 
 ---
 
-## 15. Troubleshooting
+## 16. Troubleshooting
 
 **"SQL Server LocalDB must be installed"**
 Features interacting with `.mdf` files depend on LocalDB. Download it from <https://aka.ms/sqllocaldb> (it is also included with SQL Server Express and Visual Studio).

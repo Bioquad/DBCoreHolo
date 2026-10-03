@@ -27,6 +27,8 @@ Holographic DB is a desktop application for Windows that allows you to design, d
   - Full DDL generation for SQL Server (T-SQL), MySQL/MariaDB, and PostgreSQL
   - Direct creation of physical `.mdf` files via LocalDB
   - Deploying the model (fully or partially) directly to a live SQL Server instance
+- **Data viewer:** Browse the data of one or several tables/views of any existing database (.mdf file or server), run read-only SQL queries and export the results to CSV.
+- **Full database copy:** Copy a whole database — structure, views, procedures, functions, triggers and all the data — from an .mdf file or a server to a new .mdf file or a new database on a server, without opening it (BACKUP/RESTORE on the same instance, catalog transfer + SqlBulkCopy between instances).
 - **Multi-language Support:** Instantly switch between Catalan, Spanish, and English from the settings menu
 - **Open Project Format:** Projects are saved as human-readable JSON within `.hdb` files
 
@@ -113,6 +115,12 @@ Imports/
   SqlScriptImporter.vb      DDL parser with dialect normalizer
   MdfImporter.vb            Database structure reader from physical .mdf
 
+Export/ (database tools)
+  UbicacioBD.vb             An existing database: .mdf file (LocalDB) or server database
+  CatalegBD.vb              Full catalog reader (sys.*) + T-SQL generator for copies
+  CopiaBaseDades.vb         Full database copy (BACKUP/RESTORE or transfer + SqlBulkCopy)
+  ConsultaDades.vb          Read-only data access for the data viewer, CSV export
+
 Graphics/
   SphereRenderer.vb         ← SkiaSharp graphics engine: sphere, tables, relationships, hit-testing
 
@@ -128,6 +136,9 @@ Forms/
   FrmConnectServer.vb       SQL Server connection dialog
   FrmServerActions.vb       Live server import/export management
   FrmExportMdf.vb           Export to .mdf utility dialog
+  FrmOrigenBD.vb            Choose an existing database (.mdf file or server)
+  FrmConsultaDades.vb       Data viewer (tables/views, read-only SQL, CSV)
+  FrmCopiaBD.vb             Full database copy dialog
   HoloForm.vb               Borderless dialog base class
   OperacioLlarga.vb         Runs slow database/file work off the UI thread
 
@@ -261,6 +272,8 @@ Holografic DB és una aplicació d'escriptori per a Windows que permet dissenyar
   - DDL complet per a **SQL Server (T-SQL)**, **MySQL/MariaDB** i **PostgreSQL**
   - Creació directa de fitxers `.mdf` via LocalDB
   - Enviament del model (complet o parcial) a un servidor SQL Server
+- **Visor de dades:** Consulta les dades d'una o diverses taules/vistes de qualsevol base de dades existent (fitxer .mdf o servidor), executa consultes SQL de només lectura i exporta els resultats a CSV.
+- **Còpia completa de bases de dades:** Copia una base de dades sencera —estructura, vistes, procediments, funcions, triggers i totes les dades— des d'un .mdf o un servidor cap a un .mdf nou o una BD nova d'un servidor, sense obrir-la (BACKUP/RESTORE a la mateixa instància, transferència per catàleg + SqlBulkCopy entre instàncies).
 - **Multiidioma:** Català, castellà i anglès, commutable des de les opcions.
 - **Format de projecte obert:** Fitxers `.hdb` en JSON llegible.
 
@@ -347,6 +360,12 @@ Imports/
   SqlScriptImporter.vb      Parser DDL amb normalitzador de dialecte
   MdfImporter.vb            Lector d'estructura de fitxers .mdf físics
 
+Export/ (eines de bases de dades)
+  UbicacioBD.vb             Una BD existent: fitxer .mdf (LocalDB) o BD d'un servidor
+  CatalegBD.vb              Lector complet del catàleg (sys.*) + generador T-SQL per a còpies
+  CopiaBaseDades.vb         Còpia completa de BD (BACKUP/RESTORE o transferència + SqlBulkCopy)
+  ConsultaDades.vb          Accés de només lectura per al visor de dades, exportació CSV
+
 Graphics/
   SphereRenderer.vb         ← Motor gràfic SkiaSharp: esfera, taules, relacions, hit-testing
 
@@ -362,6 +381,9 @@ Forms/
   FrmConnectServer.vb       Diàleg de connexió a SQL Server
   FrmServerActions.vb       Gestor de importació/exportació a servidor
   FrmExportMdf.vb           Diàleg de utilitat d'exportació a .mdf
+  FrmOrigenBD.vb            Tria d'una BD existent (fitxer .mdf o servidor)
+  FrmConsultaDades.vb       Visor de dades (taules/vistes, SQL de només lectura, CSV)
+  FrmCopiaBD.vb             Diàleg de còpia completa de base de dades
   HoloForm.vb               Classe base per a diàlegs sense vora
   OperacioLlarga.vb         Executa la feina lenta (BD, fitxers) fora del fil de la UI
 

@@ -17,10 +17,11 @@ Guia completa d'ús de l'aplicació. Per a la instal·lació i compilació, cons
 9. [Validació del model](#9-validació-del-model)
 10. [Importar](#10-importar)
 11. [Exportar](#11-exportar)
-12. [Opcions](#12-opcions)
-13. [Dreceres de teclat](#13-dreceres-de-teclat)
-14. [El format .hdb i l'auto-desat](#14-el-format-hdb-i-lauto-desat)
-15. [Resolució de problemes](#15-resolució-de-problemes)
+12. [Consultar dades i copiar bases de dades](#12-consultar-dades-i-copiar-bases-de-dades)
+13. [Opcions](#13-opcions)
+14. [Dreceres de teclat](#14-dreceres-de-teclat)
+15. [El format .hdb i l'auto-desat](#15-el-format-hdb-i-lauto-desat)
+16. [Resolució de problemes](#16-resolució-de-problemes)
 
 ---
 
@@ -44,8 +45,10 @@ Navegació amb el ratolí o amb les **tecles numèriques directes** (sense Enter
 |---|---|
 | **[ 1 ] Carregar estructura des de disc** | Obre el submenú de càrrega |
 | **[ 2 ] Iniciar nou nucli de dades** | Nou projecte (tria de motor SQL) |
-| **[ 3 ] Configurar paràmetres** | Opcions de l'aplicació |
-| **[ 4 ] Sortir al sistema operatiu** | Tanca l'aplicació |
+| **[ 3 ] Consultar dades** | Veure les dades de taules/vistes i fer consultes SQL de només lectura |
+| **[ 4 ] Copiar base de dades** | Còpia completa d'una base de dades (estructura, consultes i dades) |
+| **[ 5 ] Configurar paràmetres** | Opcions de l'aplicació |
+| **[ 6 ] Sortir al sistema operatiu** | Tanca l'aplicació |
 
 ### Submenú de càrrega
 
@@ -289,9 +292,41 @@ Totes les operacions destructives o de creació demanen **confirmació prèvia**
 
 ---
 
-## 12. Opcions
+## 12. Consultar dades i copiar bases de dades
 
-Menú principal *[ 3 ] Configurar paràmetres* o des del dissenyador. Disponible:
+Les dues eines treballen directament sobre una base de dades SQL Server existent —un **fitxer .mdf del disc** (obert amb LocalDB) o una **base de dades d'un servidor**— sense obrir-la al dissenyador. Són al menú principal (*[ 3 ]* i *[ 4 ]*) i al menú **Arxiu** del dissenyador.
+
+### Consultar dades
+
+1. Tria la base de dades (fitxer .mdf o connexió a un servidor).
+2. El panell esquerre mostra totes les **taules i vistes** amb el nombre aproximat de files. Marca'n una o diverses (o fes doble clic en una) i prem **CONSULTAR SELECCIONADES** (o **F5**). Cadascuna s'obre en una pestanya pròpia, limitada al valor de *Màx. files* (1000 per defecte); la barra d'estat indica quantes files es mostren del total.
+3. La pestanya **Consulta SQL** permet escriure qualsevol consulta (SELECT, JOIN, agregacions...). Prem **EXECUTAR (F5)**; si hi ha text seleccionat, només s'executa la selecció. Cada conjunt de resultats surt en una pestanya.
+4. **EXPORTAR CSV** desa la pestanya activa en CSV (UTF-8, separador `;`, llest per a Excel).
+
+> El visor és **només de lectura**: les consultes s'executen dins d'una transacció que sempre es desfà, i es refusen les ordres de transacció (`COMMIT`, `ROLLBACK`, `BEGIN TRAN`...). Els valors binaris es mostren en hexadecimal i les columnes `geography`, `geometry` i `hierarchyid`, com a text. Clic amb el botó del mig sobre una pestanya per tancar-la.
+
+### Copiar base de dades
+
+1. **ORIGEN**: tria la base de dades a copiar (fitxer .mdf o BD d'un servidor).
+2. **DESTÍ**: escriu el nom de la nova base de dades i tria **nou fitxer .mdf** (carpeta) o **nova base de dades en un servidor** (aquí només cal connectar-se al servidor, no triar cap BD).
+3. Prem **COPIAR**. El registre mostra cada pas.
+
+Què es copia: l'estructura completa (tipus exactes, col·lacions, IDENTITY, columnes calculades, DEFAULT, PK/UNIQUE/FK —també de diverses columnes—, índexs amb INCLUDE i filtre, restriccions CHECK), **vistes, procediments emmagatzemats, funcions i triggers**, seqüències, tipus d'usuari, sinònims, descripcions i **totes les dades**.
+
+El mètode s'escull automàticament:
+
+| Cas | Mètode | Resultat |
+|---|---|---|
+| Mateixa instància SQL Server (p.ex. .mdf → .mdf, o dues BD del mateix servidor) | `BACKUP … COPY_ONLY` + `RESTORE … WITH MOVE` | Còpia exacta de tot, inclosos usuaris i permisos |
+| Instàncies diferents (p.ex. servidor → .mdf, o entre dos servidors) | Estructura recreada a partir del catàleg + dades amb `SqlBulkCopy` | Tot l'anterior; els usuaris/permisos, assemblats CLR i índexs de text complet no es copien i surten com a avisos |
+
+Si no tens permís de BACKUP/RESTORE, es fa servir automàticament la transferència. **No se sobreescriu mai res**: si la BD o els fitxers de destí ja existeixen la còpia s'atura, i si alguna cosa falla s'elimina la còpia incompleta. Un fitxer .mdf nou queda **desadjuntat** de LocalDB perquè el puguis moure o obrir més endavant.
+
+---
+
+## 13. Opcions
+
+Menú principal *[ 5 ] Configurar paràmetres* o des del dissenyador. Disponible:
 
 - **Tema de color**: taronja (per defecte), verd, cian o blanc, sobre fons fosc.
 - **Mida de font**: petita, normal o gran.
@@ -303,7 +338,7 @@ Les preferències es desen a `%AppData%\DBCoreHolographic\opcions.json` (sempre 
 
 ---
 
-## 13. Dreceres de teclat
+## 14. Dreceres de teclat
 
 | Drecera | Acció |
 |---|---|
@@ -311,17 +346,18 @@ Les preferències es desen a `%AppData%\DBCoreHolographic\opcions.json` (sempre 
 | **Ctrl+O** | Obrir projecte .hdb |
 | **Ctrl+S** | Desar |
 | **Ctrl+Shift+S** | Desar com... |
-| **Ctrl+Z** | Desfer (fins a 50 operacions) |
+| **Ctrl+Z** | Desfer (50 operacions per defecte, configurable a les opcions) |
 | **Ctrl+Y** | Refer |
 | **Ins** | Nova taula |
 | **Supr** | Eliminar l'element seleccionat (camp → relació → taula, segons context) |
 | **↑ / ↓** | Navegar per la llista lateral o pels camps de la taula activa |
 | **Enter** | Confirmar selecció / obrir l'editor del camp seleccionat |
 | **Escape** | Cancel·lar diàleg / tornar enrere al menú |
+| **F5** (visor de dades) | Consultar les taules seleccionades o executar la consulta SQL |
 
 ---
 
-## 14. El format .hdb i l'auto-desat
+## 15. El format .hdb i l'auto-desat
 
 Els projectes es desen com a **JSON UTF-8 indentat**: nom del projecte, motor SQL, dates, estat de la càmera (rotació, zoom i desplaçament) i la llista completa de taules (amb tots els atributs de cada camp) i relacions. En obrir un projecte, la càmera es restaura tal com l'havies deixat.
 
@@ -332,7 +368,7 @@ Com que és JSON pla, els fitxers `.hdb` funcionen molt bé amb Git: els canvis 
 
 ---
 
-## 15. Resolució de problemes
+## 16. Resolució de problemes
 
 **"Cal tenir SQL Server LocalDB instal·lat"**
 Les funcions `.mdf` requereixen LocalDB. Descarrega'l de <https://aka.ms/sqllocaldb> (inclòs també amb SQL Server Express i amb Visual Studio).

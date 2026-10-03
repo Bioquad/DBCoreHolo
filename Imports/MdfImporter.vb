@@ -26,17 +26,9 @@ Imports Microsoft.Data.SqlClient
 Public Module MdfImporter
 
     Public Function Importar(mdfPath As String) As ProyectoBBDD
-        Dim dbName As String = IO.Path.GetFileNameWithoutExtension(mdfPath)
-        Dim b As New SqlConnectionStringBuilder()
-        b.DataSource = "(LocalDB)\MSSQLLocalDB"
-        b.AttachDBFilename = IO.Path.GetFullPath(mdfPath)
-        b.InitialCatalog = dbName
-        b.IntegratedSecurity = True
-        b.ConnectTimeout = 30
-
-        Using conn As New SqlConnection(b.ConnectionString)
-            conn.Open()
-            Return SqlServerConnector.LlegirEstructura(conn, dbName)
+        Dim ub As UbicacioBD = UbicacioBD.Fitxer(mdfPath)
+        Using conn As SqlConnection = ub.ObrirConnexio()
+            Return SqlServerConnector.LlegirEstructura(conn, ub.NomBD)
         End Using
     End Function
 

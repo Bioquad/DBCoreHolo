@@ -150,7 +150,7 @@ Public Module MdfExporter
     ' HELPERS
     ' ════════════════════════════════════════════════════════════════════════
 
-    Private Function CadenaConnexio(bd As String) As String
+    Friend Function CadenaConnexio(bd As String) As String
         Dim b As New SqlConnectionStringBuilder()
         b.DataSource = LOCALDB
         b.InitialCatalog = bd
@@ -159,7 +159,7 @@ Public Module MdfExporter
         Return b.ConnectionString
     End Function
 
-    Private Sub ValidarNom(dbName As String)
+    Friend Sub ValidarNom(dbName As String)
         If String.IsNullOrWhiteSpace(dbName) Then
             Throw New ArgumentException("Cal indicar el nom de la base de dades.")
         End If
@@ -168,6 +168,13 @@ Public Module MdfExporter
             Throw New ArgumentException("El nom de la BD conté caràcters no permesos.")
         End If
     End Sub
+
+    ''' <summary>" COLLATE x" si el nom és vàlid (només lletres, xifres i _), si no "".</summary>
+    Friend Function ClausulaCollation(collation As String) As String
+        If String.IsNullOrWhiteSpace(collation) OrElse
+           Not System.Text.RegularExpressions.Regex.IsMatch(collation, "^\w+$") Then Return ""
+        Return " COLLATE " & collation
+    End Function
 
     Private Function Lit(s As String) As String
         Return s.Replace("'", "''")
@@ -180,7 +187,9 @@ Public Module MdfExporter
         End Using
     End Function
 
-    Private Sub CrearBd(conn As SqlConnection, dbName As String, mdfPath As String, ldfPath As String)
+    ''' <param name="collation">Opcional: col·lació de la BD (p.ex. la de la BD d'origen en una còpia)</param>
+    Friend Sub CrearBd(conn As SqlConnection, dbName As String, mdfPath As String, ldfPath As String,
+                       Optional collation As String = Nothing)
         IO.Directory.CreateDirectory(IO.Path.GetDirectoryName(mdfPath))
         Dim sql As String =
             "CREATE DATABASE " & TSqlExporter.Q(dbName) & " ON PRIMARY " &
@@ -188,7 +197,7 @@ Public Module MdfExporter
             " SIZE = 8192KB, FILEGROWTH = 65536KB) " &
             "LOG ON " &
             "(NAME = N'" & Lit(dbName & "_log") & "', FILENAME = N'" & Lit(ldfPath) & "', " &
-            " SIZE = 8192KB, FILEGROWTH = 65536KB);"
+            " SIZE = 8192KB, FILEGROWTH = 65536KB)" & ClausulaCollation(collation) & ";"
         Using cmd As New SqlCommand(sql, conn)
             cmd.CommandTimeout = 120
             cmd.ExecuteNonQuery()
@@ -205,7 +214,7 @@ Public Module MdfExporter
         End Using
     End Sub
 
-    Private Sub EliminarBd(conn As SqlConnection, dbName As String)
+    Friend Sub EliminarBd(conn As SqlConnection, dbName As String)
         Dim q As String = TSqlExporter.Q(dbName)
         ' Expulsar connexions actives abans d'eliminar
         Using cmd As New SqlCommand("ALTER DATABASE " & q & " SET SINGLE_USER WITH ROLLBACK IMMEDIATE;", conn)
