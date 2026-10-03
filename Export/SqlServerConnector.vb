@@ -21,22 +21,28 @@ Imports Microsoft.Data.SqlClient
 
 ' ============================================================
 ' SqlServerConnector.vb  —  DB-Core Holographic
-' Mòdul central de connexió i operacions amb SQL Server en xarxa.
+' Mòdul central de connexió i operacions amb SQL Server.
 '
 ' Responsabilitats:
-'   - Construir i validar connection strings
-'   - Llistar instàncies i bases de dades disponibles
-'   - Importar estructura completa d'una BD (igual que MdfImporter
-'     però via connexió de xarxa)
-'   - Exportar/aplicar DDL al servidor (sense crear .mdf)
+'   - Construir connection strings (SqlConnectionStringBuilder)
+'   - Llistar bases de dades disponibles
+'   - Llegir l'estructura completa d'una BD (servidor en xarxa o
+'     LocalDB/.mdf — MdfImporter reutilitza LlegirEstructura)
+'   - Aplicar el DDL del model a una BD (complet o per diferències,
+'     dins d'una transacció — MdfExporter també ho reutilitza)
 '   - Enviar parts del model (taules seleccionades + FK)
 '
+' Tot el T-SQL es genera amb TSqlExporter (font única).
 ' Requereix: Microsoft.Data.SqlClient 5.2.1
 ' ============================================================
 Public Module SqlServerConnector
 
+    ' Errors SQL Server que es tracten com a "ja existia" (no fatals)
+    Private Const ERR_OBJECTE_EXISTEIX As Integer = 2714
+    Private Const ERR_INDEX_EXISTEIX As Integer = 1913
+
     ' ════════════════════════════════════════════════════════
-    ' MODEL DE CONNEXIÓ  —  dades persistibles
+    ' MODEL DE CONNEXIÓ
     ' ════════════════════════════════════════════════════════
     Public Class ConnexioServidor
         Public Property Servidor    As String = ""
@@ -47,54 +53,41 @@ Public Module SqlServerConnector
         Public Property Port        As Integer = 1433
         Public Property TimeoutSeg  As Integer = 15
         Public Property Encrypt     As Boolean = False
+        ''' <summary>
+        ''' True → s'accepta qualsevol certificat del servidor (útil amb certificats
+        ''' autosignats en xarxes locals). False → el certificat es valida.
+        ''' </summary>
+        Public Property TrustServerCertificate As Boolean = True
 
         Public Function BuildConnectionString() As String
-            Dim sb As New StringBuilder()
-            sb.Append("Data Source=")
-            If Port <> 1433 Then
-                sb.Append(Servidor & "," & Port)
-            Else
-                sb.Append(Servidor)
-            End If
-            sb.Append(";")
-            If Not String.IsNullOrEmpty(BaseDades) Then
-                sb.Append("Initial Catalog=" & BaseDades & ";")
-            End If
-            If AuthWindows Then
-                sb.Append("Integrated Security=True;")
-            Else
-                sb.Append("User Id=" & Usuari & ";Password=" & Contrasenya & ";")
-            End If
-            sb.Append("Connect Timeout=" & TimeoutSeg & ";")
-            sb.Append("Encrypt=" & If(Encrypt, "True", "False") & ";")
-            sb.Append("TrustServerCertificate=True;")
-            Return sb.ToString()
+            Return Construir(BaseDades)
         End Function
 
         Public Function BuildMasterConnectionString() As String
-            Dim master As New ConnexioServidor()
-            master.Servidor    = Me.Servidor
-            master.Port        = Me.Port
-            master.AuthWindows = Me.AuthWindows
-            master.Usuari      = Me.Usuari
-            master.Contrasenya = Me.Contrasenya
-            master.BaseDades   = "master"
-            master.TimeoutSeg  = Me.TimeoutSeg
-            master.Encrypt     = Me.Encrypt
-            Return master.BuildConnectionString()
+            Return Construir("master")
+        End Function
+
+        Private Function Construir(bd As String) As String
+            ' El builder escapa correctament qualsevol caràcter especial
+            ' (p.ex. un ";" dins la contrasenya no pot injectar paràmetres)
+            Dim b As New SqlConnectionStringBuilder()
+            b.DataSource = If(Port > 0 AndAlso Port <> 1433, Servidor & "," & Port, Servidor)
+            If Not String.IsNullOrEmpty(bd) Then b.InitialCatalog = bd
+            If AuthWindows Then
+                b.IntegratedSecurity = True
+            Else
+                b.IntegratedSecurity = False
+                b.UserID = Usuari
+                b.Password = Contrasenya
+            End If
+            b.ConnectTimeout = Math.Max(1, TimeoutSeg)
+            b.Encrypt = If(Encrypt, SqlConnectionEncryptOption.Mandatory, SqlConnectionEncryptOption.Optional)
+            b.TrustServerCertificate = TrustServerCertificate
+            Return b.ConnectionString
         End Function
 
         Public Function Copia() As ConnexioServidor
-            Dim c As New ConnexioServidor()
-            c.Servidor    = Me.Servidor
-            c.Usuari      = Me.Usuari
-            c.Contrasenya = Me.Contrasenya
-            c.BaseDades   = Me.BaseDades
-            c.AuthWindows = Me.AuthWindows
-            c.Port        = Me.Port
-            c.TimeoutSeg  = Me.TimeoutSeg
-            c.Encrypt      = Me.Encrypt
-            Return c
+            Return DirectCast(Me.MemberwiseClone(), ConnexioServidor)
         End Function
 
         Public Overrides Function ToString() As String
@@ -137,244 +130,245 @@ Public Module SqlServerConnector
     End Class
 
     ' ════════════════════════════════════════════════════════
-    ' TEST DE CONNEXIÓ
+    ' TEST DE CONNEXIÓ  — retorna "" si OK, o el missatge d'error
     ' ════════════════════════════════════════════════════════
     Public Function TestConnexio(conn As ConnexioServidor) As String
-        ' Retorna "" si OK, o el missatge d'error
         Try
             Using c As New SqlConnection(conn.BuildConnectionString())
                 c.Open()
                 Using cmd As New SqlCommand("SELECT @@VERSION", c)
-                    Dim ver As String = CStr(cmd.ExecuteScalar())
-                    Return ""   ' OK
+                    cmd.ExecuteScalar()
                 End Using
             End Using
+            Return ""
         Catch ex As Exception
             Return ex.Message
         End Try
     End Function
 
     ' ════════════════════════════════════════════════════════
-    ' LLISTAR BASES DE DADES DEL SERVIDOR
+    ' LLISTAR BASES DE DADES D'USUARI DEL SERVIDOR
     ' ════════════════════════════════════════════════════════
     Public Function LlistarBD(conn As ConnexioServidor) As List(Of String)
         Dim llista As New List(Of String)()
         Try
-            Dim masterConn As New ConnexioServidor()
-            masterConn.Servidor    = conn.Servidor
-            masterConn.Port        = conn.Port
-            masterConn.AuthWindows = conn.AuthWindows
-            masterConn.Usuari      = conn.Usuari
-            masterConn.Contrasenya = conn.Contrasenya
-            masterConn.BaseDades   = "master"
-            masterConn.TimeoutSeg  = conn.TimeoutSeg
-            masterConn.Encrypt     = conn.Encrypt
-
-            Using c As New SqlConnection(masterConn.BuildConnectionString())
+            Using c As New SqlConnection(conn.BuildMasterConnectionString())
                 c.Open()
-                Dim sql As String =
+                Using cmd As New SqlCommand(
                     "SELECT name FROM sys.databases " &
-                    "WHERE database_id > 4 " &
-                    "  AND state_desc = 'ONLINE' " &
-                    "ORDER BY name;"
-                Using cmd As New SqlCommand(sql, c)
-                Using rdr As SqlDataReader = cmd.ExecuteReader()
-                    Do While rdr.Read()
-                        llista.Add(rdr.GetString(0))
-                    Loop
-                End Using
+                    "WHERE database_id > 4 AND state_desc = 'ONLINE' ORDER BY name;", c)
+                    Using rdr As SqlDataReader = cmd.ExecuteReader()
+                        Do While rdr.Read()
+                            llista.Add(rdr.GetString(0))
+                        Loop
+                    End Using
                 End Using
             End Using
-        Catch ex As Exception
-            ' Retornem llista buida; l'error es veurà al test
+        Catch
+            ' Retornem llista buida; l'error es veurà al test de connexió
         End Try
         Return llista
     End Function
 
     ' ════════════════════════════════════════════════════════
     ' IMPORTAR ESTRUCTURA DES DEL SERVIDOR
-    ' Llegeix totes les taules, columnes, PKs i FKs
     ' ════════════════════════════════════════════════════════
     Public Function ImportarEstructura(conn As ConnexioServidor) As ProyectoBBDD
-        Dim p As New ProyectoBBDD()
-        p.Nombre   = conn.BaseDades
-        p.MotorSQL = "T-SQL"
-
         Using c As New SqlConnection(conn.BuildConnectionString())
             c.Open()
-
-            ' ── 1. Taules ────────────────────────────────────────────
-            Using cmd As New SqlCommand(
-                "SELECT TABLE_SCHEMA, TABLE_NAME " &
-                "FROM INFORMATION_SCHEMA.TABLES " &
-                "WHERE TABLE_TYPE='BASE TABLE' " &
-                "ORDER BY TABLE_SCHEMA, TABLE_NAME;", c)
-            Using rdr As SqlDataReader = cmd.ExecuteReader()
-                Do While rdr.Read()
-                    Dim t As New TablaBBDD()
-                    t.Id     = p.GetNextTableId()
-                    t.Schema = rdr.GetString(0)
-                    t.Nombre = rdr.GetString(1).ToUpper()
-                    p.Taules.Add(t)
-                Loop
-            End Using
-            End Using
-
-            ' ── 2. Columnes ──────────────────────────────────────────
-            Using cmd As New SqlCommand(
-                "SELECT c.TABLE_SCHEMA, c.TABLE_NAME, c.COLUMN_NAME, " &
-                "       c.DATA_TYPE, c.CHARACTER_MAXIMUM_LENGTH, " &
-                "       c.NUMERIC_PRECISION, c.NUMERIC_SCALE, " &
-                "       c.IS_NULLABLE, c.COLUMN_DEFAULT, c.ORDINAL_POSITION, " &
-                "       COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA+'.'+c.TABLE_NAME)," &
-                "           c.COLUMN_NAME,'IsIdentity') AS IS_IDENTITY, " &
-                "       CAST(ep.value AS NVARCHAR(MAX)) AS MS_DESC " &
-                "FROM INFORMATION_SCHEMA.COLUMNS c " &
-                "LEFT JOIN sys.extended_properties ep " &
-                "  ON ep.major_id   = OBJECT_ID(c.TABLE_SCHEMA+'.'+c.TABLE_NAME) " &
-                "  AND ep.minor_id  = c.ORDINAL_POSITION " &
-                "  AND ep.name      = 'MS_Description' " &
-                "  AND ep.class     = 1 " &
-                "ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION;", c)
-            Using rdr As SqlDataReader = cmd.ExecuteReader()
-                Do While rdr.Read()
-                    Dim sch As String = rdr.GetString(0)
-                    Dim tnm As String = rdr.GetString(1).ToUpper()
-                    Dim t2  As TablaBBDD = Nothing
-                    For Each tt As TablaBBDD In p.Taules
-                        If tt.Nombre = tnm AndAlso tt.Schema = sch Then t2 = tt : Exit For
-                    Next
-                    If t2 Is Nothing Then Continue Do
-
-                    Dim f As New CampoBBDD()
-                    f.Nombre  = rdr.GetString(2).ToUpper()
-                    f.NotNull = (rdr.GetString(7) = "NO")
-                    If Not rdr.IsDBNull(8)  Then f.DefaultValue = rdr.GetString(8)
-                    If Not rdr.IsDBNull(10) AndAlso rdr.GetInt32(10) = 1 Then
-                        f.EsIdentity       = True
-                        f.IdentitySeed      = 1
-                        f.IdentityIncrement = 1
-                    End If
-                    If Not rdr.IsDBNull(11) Then f.Descripcion = rdr.GetString(11)
-                    f.TipoDato = MapTipus(rdr.GetString(3))
-                    If Not rdr.IsDBNull(4) Then
-                        Dim ml As Integer = rdr.GetInt32(4)
-                        If ml = -1 Then
-                            f.LongitudMax = True
-                        ElseIf ml > 0 Then
-                            f.Longitud = ml
-                        End If
-                    End If
-                    If Not rdr.IsDBNull(5) Then f.Precision = CByte(rdr.GetByte(5))
-                    If Not rdr.IsDBNull(6) Then f.Escala    = rdr.GetInt32(6)
-                    t2.Fields.Add(f)
-                Loop
-            End Using
-            End Using
-
-            ' ── 3. PKs ───────────────────────────────────────────────
-            Using cmd As New SqlCommand(
-                "SELECT KU.TABLE_SCHEMA, KU.TABLE_NAME, KU.COLUMN_NAME " &
-                "FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS TC " &
-                "JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE KU " &
-                "  ON TC.CONSTRAINT_NAME = KU.CONSTRAINT_NAME " &
-                "WHERE TC.CONSTRAINT_TYPE = 'PRIMARY KEY';", c)
-            Using rdr As SqlDataReader = cmd.ExecuteReader()
-                Do While rdr.Read()
-                    Dim sch3 As String = rdr.GetString(0)
-                    Dim tnm3 As String = rdr.GetString(1).ToUpper()
-                    Dim cnm3 As String = rdr.GetString(2).ToUpper()
-                    For Each tt As TablaBBDD In p.Taules
-                        If tt.Nombre = tnm3 AndAlso tt.Schema = sch3 Then
-                            For Each ff As CampoBBDD In tt.Fields
-                                If ff.Nombre = cnm3 Then
-                                    ff.EsPK    = True
-                                    ff.NotNull = True
-                                End If
-                            Next
-                        End If
-                    Next
-                Loop
-            End Using
-            End Using
-
-            ' ── 4. Descripcions de taula ─────────────────────────────
-            Using cmd As New SqlCommand(
-                "SELECT OBJECT_NAME(ep.major_id), CAST(ep.value AS NVARCHAR(MAX)) " &
-                "FROM sys.extended_properties ep " &
-                "WHERE ep.class = 1 AND ep.minor_id = 0 AND ep.name = 'MS_Description';", c)
-            Using rdr As SqlDataReader = cmd.ExecuteReader()
-                Do While rdr.Read()
-                    Dim tnm4 As String = rdr.GetString(0).ToUpper()
-                    Dim desc4 As String = rdr.GetString(1)
-                    For Each tt As TablaBBDD In p.Taules
-                        If tt.Nombre = tnm4 Then tt.Descripcion = desc4 : Exit For
-                    Next
-                Loop
-            End Using
-            End Using
-
-            ' ── 5. Foreign Keys ──────────────────────────────────────
-            Using cmd As New SqlCommand(
-                "SELECT FK.name, " &
-                "  SCHEMA_NAME(FKT.schema_id), FKT.name, FKC.name, " &
-                "  SCHEMA_NAME(PKT.schema_id), PKT.name, PKC.name, " &
-                "  FK.delete_referential_action, FK.update_referential_action " &
-                "FROM sys.foreign_keys FK " &
-                "JOIN sys.tables FKT ON FK.parent_object_id    = FKT.object_id " &
-                "JOIN sys.tables PKT ON FK.referenced_object_id = PKT.object_id " &
-                "JOIN sys.foreign_key_columns FC " &
-                "     ON FK.object_id = FC.constraint_object_id " &
-                "JOIN sys.columns FKC " &
-                "     ON FC.parent_object_id = FKC.object_id " &
-                "     AND FC.parent_column_id = FKC.column_id " &
-                "JOIN sys.columns PKC " &
-                "     ON FC.referenced_object_id = PKC.object_id " &
-                "     AND FC.referenced_column_id = PKC.column_id;", c)
-            Using rdr As SqlDataReader = cmd.ExecuteReader()
-                Do While rdr.Read()
-                    Dim fkNom As String = rdr.GetString(0)
-                    Dim fkSch As String = rdr.GetString(1)
-                    Dim fkTbl As String = rdr.GetString(2).ToUpper()
-                    Dim fkCol As String = rdr.GetString(3).ToUpper()
-                    Dim pkSch As String = rdr.GetString(4)
-                    Dim pkTbl As String = rdr.GetString(5).ToUpper()
-                    Dim pkCol As String = rdr.GetString(6).ToUpper()
-                    Dim onDel As Integer = CByte(rdr.GetByte(7))
-                    Dim onUpd As Integer = CByte(rdr.GetByte(8))
-
-                    Dim ftId As Integer = -1
-                    Dim ttId As Integer = -1
-                    For Each tt As TablaBBDD In p.Taules
-                        If tt.Nombre = fkTbl AndAlso tt.Schema = fkSch Then ftId = tt.Id
-                        If tt.Nombre = pkTbl AndAlso tt.Schema = pkSch Then ttId = tt.Id
-                    Next
-                    If ftId < 0 OrElse ttId < 0 Then Continue Do
-
-                    For Each tt As TablaBBDD In p.Taules
-                        If tt.Id = ftId Then
-                            For Each ff As CampoBBDD In tt.Fields
-                                If ff.Nombre = fkCol Then ff.EsFK = True
-                            Next
-                        End If
-                    Next
-
-                    Dim rel As New RelacionBBDD()
-                    rel.Id             = p.GetNextRelId()
-                    rel.Nombre         = fkNom
-                    rel.TablaOrigenId  = ftId
-                    rel.CampoFKNombre  = fkCol
-                    rel.TablaDestinoId = ttId
-                    rel.CampoPKNombre  = pkCol
-                    rel.TipoRelacion   = CardinalityType.ManyToOne
-                    rel.OnDelete       = MapAccio(onDel)
-                    rel.OnUpdate       = MapAccio(onUpd)
-                    rel.CrearIndexFK   = True
-                    p.Relacions.Add(rel)
-                Loop
-            End Using
-            End Using
+            Return LlegirEstructura(c, conn.BaseDades)
         End Using
+    End Function
+
+    ''' <summary>
+    ''' Llegeix taules, columnes, PK (també compostes), UNIQUE i CHECK d'una
+    ''' sola columna, descripcions i FK d'una connexió oberta.
+    ''' Les FK de diverses columnes no es poden representar al model i
+    ''' s'ometen (s'informa a <paramref name="avisos"/> si s'indica).
+    ''' </summary>
+    Public Function LlegirEstructura(c As SqlConnection, nomProjecte As String,
+                                     Optional avisos As List(Of String) = Nothing) As ProyectoBBDD
+        Dim p As New ProyectoBBDD()
+        p.Nombre   = nomProjecte
+        p.MotorSQL = "T-SQL"
+
+        ' object_id → taula   i   object_id|column_id → camp
+        Dim taules As New Dictionary(Of Integer, TablaBBDD)()
+        Dim camps As New Dictionary(Of String, CampoBBDD)()
+
+        ' ── 1. Taules + descripció ───────────────────────────────
+        Executar(c,
+            "SELECT t.object_id, s.name, t.name, CAST(ep.value AS NVARCHAR(MAX)) " &
+            "FROM sys.tables t " &
+            "JOIN sys.schemas s ON s.schema_id = t.schema_id " &
+            "LEFT JOIN sys.extended_properties ep " &
+            "  ON ep.class = 1 AND ep.major_id = t.object_id AND ep.minor_id = 0 " &
+            "  AND ep.name = 'MS_Description' " &
+            "WHERE t.is_ms_shipped = 0 " &
+            "ORDER BY s.name, t.name;",
+            Sub(rdr)
+                Dim t As New TablaBBDD()
+                t.Id     = p.GetNextTableId()
+                t.Schema = rdr.GetString(1)
+                t.Nombre = rdr.GetString(2).ToUpper()
+                If Not rdr.IsDBNull(3) Then t.Descripcion = rdr.GetString(3)
+                taules(rdr.GetInt32(0)) = t
+                p.Taules.Add(t)
+            End Sub)
+
+        ' ── 2. Columnes ──────────────────────────────────────────
+        Executar(c,
+            "SELECT c.object_id, c.column_id, c.name, " &
+            "       CASE WHEN ty.is_user_defined = 1 THEN TYPE_NAME(c.system_type_id) ELSE ty.name END, " &
+            "       c.max_length, c.precision, c.scale, c.is_nullable, " &
+            "       c.is_identity, CAST(ic.seed_value AS BIGINT), CAST(ic.increment_value AS BIGINT), " &
+            "       c.is_rowguidcol, c.is_filestream, " &
+            "       c.is_computed, cc.definition, cc.is_persisted, " &
+            "       dc.definition, " &
+            "       CASE WHEN c.collation_name <> CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS SYSNAME) " &
+            "            THEN c.collation_name END, " &
+            "       CAST(ep.value AS NVARCHAR(MAX)) " &
+            "FROM sys.columns c " &
+            "JOIN sys.tables t  ON t.object_id = c.object_id AND t.is_ms_shipped = 0 " &
+            "JOIN sys.types ty  ON ty.user_type_id = c.user_type_id " &
+            "LEFT JOIN sys.identity_columns ic ON ic.object_id = c.object_id AND ic.column_id = c.column_id " &
+            "LEFT JOIN sys.computed_columns cc ON cc.object_id = c.object_id AND cc.column_id = c.column_id " &
+            "LEFT JOIN sys.default_constraints dc ON dc.object_id = c.default_object_id " &
+            "LEFT JOIN sys.extended_properties ep " &
+            "  ON ep.class = 1 AND ep.major_id = c.object_id AND ep.minor_id = c.column_id " &
+            "  AND ep.name = 'MS_Description' " &
+            "ORDER BY c.object_id, c.column_id;",
+            Sub(rdr)
+                Dim t As TablaBBDD = Nothing
+                If Not taules.TryGetValue(rdr.GetInt32(0), t) Then Return
+
+                Dim f As New CampoBBDD()
+                f.Nombre   = rdr.GetString(2).ToUpper()
+                Dim tipus As String = If(rdr.IsDBNull(3), "", rdr.GetString(3))
+                f.TipoDato = MapTipus(tipus)
+
+                Dim maxLen As Integer = rdr.GetInt16(4)
+                If f.NecessitaLongitud Then
+                    If maxLen = -1 Then
+                        f.LongitudMax = True
+                    ElseIf tipus.Equals("nchar", StringComparison.OrdinalIgnoreCase) OrElse
+                           tipus.Equals("nvarchar", StringComparison.OrdinalIgnoreCase) Then
+                        f.Longitud = maxLen \ 2
+                    Else
+                        f.Longitud = maxLen
+                    End If
+                End If
+                If f.NecessitaPrecEsc Then
+                    f.Precision = rdr.GetByte(5)
+                    f.Escala    = rdr.GetByte(6)
+                End If
+
+                f.NotNull = Not rdr.GetBoolean(7)
+                If rdr.GetBoolean(8) Then
+                    f.EsIdentity        = True
+                    f.IdentitySeed      = If(rdr.IsDBNull(9), 1, CInt(rdr.GetInt64(9)))
+                    f.IdentityIncrement = If(rdr.IsDBNull(10), 1, CInt(rdr.GetInt64(10)))
+                End If
+                f.EsRowGuid    = rdr.GetBoolean(11)
+                f.EsFileStream = rdr.GetBoolean(12)
+                If rdr.GetBoolean(13) Then
+                    f.EsCalculado    = True
+                    f.FormulaCalculo = TreureParentesisExterns(If(rdr.IsDBNull(14), "", rdr.GetString(14)))
+                    f.EsPersistido   = Not rdr.IsDBNull(15) AndAlso rdr.GetBoolean(15)
+                End If
+                If Not rdr.IsDBNull(16) Then f.DefaultValue = TreureParentesisExterns(rdr.GetString(16))
+                If Not rdr.IsDBNull(17) Then f.Collation = rdr.GetString(17)
+                If Not rdr.IsDBNull(18) Then f.Descripcion = rdr.GetString(18)
+
+                t.Fields.Add(f)
+                camps(rdr.GetInt32(0) & "|" & rdr.GetInt32(1)) = f
+            End Sub)
+
+        ' ── 3. PK (simples i compostes) ──────────────────────────
+        Executar(c,
+            "SELECT ic.object_id, ic.column_id " &
+            "FROM sys.indexes i " &
+            "JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id " &
+            "WHERE i.is_primary_key = 1 " &
+            "ORDER BY ic.object_id, ic.key_ordinal;",
+            Sub(rdr)
+                Dim f As CampoBBDD = Nothing
+                If camps.TryGetValue(rdr.GetInt32(0) & "|" & rdr.GetInt32(1), f) Then
+                    f.EsPK    = True
+                    f.NotNull = True
+                End If
+            End Sub)
+
+        ' ── 4. UNIQUE d'una sola columna ─────────────────────────
+        Executar(c,
+            "SELECT i.object_id, MIN(ic.column_id) " &
+            "FROM sys.indexes i " &
+            "JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id " &
+            "  AND ic.is_included_column = 0 " &
+            "WHERE i.is_unique_constraint = 1 " &
+            "GROUP BY i.object_id, i.index_id HAVING COUNT(*) = 1;",
+            Sub(rdr)
+                Dim f As CampoBBDD = Nothing
+                If camps.TryGetValue(rdr.GetInt32(0) & "|" & rdr.GetInt32(1), f) Then f.EsUnique = True
+            End Sub)
+
+        ' ── 5. CHECK de columna ──────────────────────────────────
+        Executar(c,
+            "SELECT parent_object_id, parent_column_id, definition " &
+            "FROM sys.check_constraints WHERE parent_column_id > 0;",
+            Sub(rdr)
+                Dim f As CampoBBDD = Nothing
+                If camps.TryGetValue(rdr.GetInt32(0) & "|" & rdr.GetInt32(1), f) AndAlso
+                   String.IsNullOrEmpty(f.CheckExpression) Then
+                    f.CheckExpression = TreureParentesisExterns(rdr.GetString(2))
+                End If
+            End Sub)
+
+        ' ── 6. Foreign Keys ──────────────────────────────────────
+        Executar(c,
+            "SELECT fk.name, fk.parent_object_id, fkc.parent_column_id, " &
+            "       fk.referenced_object_id, fkc.referenced_column_id, " &
+            "       fk.delete_referential_action, fk.update_referential_action, " &
+            "       fk.is_disabled, fk.is_not_trusted, fk.is_not_for_replication, " &
+            "       (SELECT COUNT(*) FROM sys.foreign_key_columns x " &
+            "         WHERE x.constraint_object_id = fk.object_id) " &
+            "FROM sys.foreign_keys fk " &
+            "JOIN sys.foreign_key_columns fkc " &
+            "  ON fkc.constraint_object_id = fk.object_id AND fkc.constraint_column_id = 1 " &
+            "ORDER BY fk.name;",
+            Sub(rdr)
+                Dim fkNom As String = rdr.GetString(0)
+                If rdr.GetInt32(10) > 1 Then
+                    avisos?.Add("FK """ & fkNom & """: és de diverses columnes i no es pot representar al model (s'ha omès).")
+                    Return
+                End If
+                Dim ft As TablaBBDD = Nothing
+                Dim tt As TablaBBDD = Nothing
+                Dim fFK As CampoBBDD = Nothing
+                Dim fPK As CampoBBDD = Nothing
+                If Not taules.TryGetValue(rdr.GetInt32(1), ft) OrElse
+                   Not taules.TryGetValue(rdr.GetInt32(3), tt) OrElse
+                   Not camps.TryGetValue(rdr.GetInt32(1) & "|" & rdr.GetInt32(2), fFK) OrElse
+                   Not camps.TryGetValue(rdr.GetInt32(3) & "|" & rdr.GetInt32(4), fPK) Then Return
+
+                fFK.EsFK = True
+
+                Dim rel As New RelacionBBDD()
+                rel.Id                = p.GetNextRelId()
+                rel.Nombre            = fkNom
+                rel.TablaOrigenId     = ft.Id
+                rel.CampoFKNombre     = fFK.Nombre
+                rel.TablaDestinoId    = tt.Id
+                rel.CampoPKNombre     = fPK.Nombre
+                rel.TipoRelacion      = CardinalityType.ManyToOne
+                rel.OnDelete          = MapAccio(rdr.GetByte(5))
+                rel.OnUpdate          = MapAccio(rdr.GetByte(6))
+                rel.Disabled          = rdr.GetBoolean(7)
+                rel.WithCheck         = If(rdr.GetBoolean(8), WithCheckOption.WithNoCheck, WithCheckOption.WithCheck)
+                rel.NotForReplication = rdr.GetBoolean(9)
+                rel.CrearIndexFK      = True
+                p.Relacions.Add(rel)
+            End Sub)
 
         Return p
     End Function
@@ -387,12 +381,15 @@ Public Module SqlServerConnector
                                      p As ProyectoBBDD,
                                      mode As Integer) As ResultatOperacio
         Dim res As New ResultatOperacio()
+        Dim bdCreada As Boolean = False
         Try
-            ' Connexió al master per gestionar la BD
-            Dim masterCs As String = conn.BuildMasterConnectionString()
-            Using masterConn As New SqlConnection(masterCs)
-                masterConn.Open()
+            If String.IsNullOrWhiteSpace(conn.BaseDades) Then
+                res.MissatgeError = "Cal indicar el nom de la base de dades."
+                Return res
+            End If
 
+            Using masterConn As New SqlConnection(conn.BuildMasterConnectionString())
+                masterConn.Open()
                 Dim bdJaExisteix As Boolean = BdExisteix(masterConn, conn.BaseDades)
 
                 Select Case mode
@@ -403,20 +400,24 @@ Public Module SqlServerConnector
                             Return res
                         End If
                         CrearBd(masterConn, conn.BaseDades)
+                        bdCreada = True
 
                     Case 1  ' DropAndCreate
                         If bdJaExisteix Then EliminarBd(masterConn, conn.BaseDades)
                         CrearBd(masterConn, conn.BaseDades)
+                        bdCreada = True
 
                     Case 2  ' AlterExisting
-                        If Not bdJaExisteix Then CrearBd(masterConn, conn.BaseDades)
+                        If Not bdJaExisteix Then
+                            CrearBd(masterConn, conn.BaseDades)
+                            bdCreada = True
+                        End If
                 End Select
             End Using
 
-            ' Connexió a la BD destí
             Using destConn As New SqlConnection(conn.BuildConnectionString())
                 destConn.Open()
-                If mode = 2 Then
+                If mode = 2 AndAlso Not bdCreada Then
                     AplicarDiferencies(destConn, p, res)
                 Else
                     AplicarDDLComplet(destConn, p, res)
@@ -426,6 +427,17 @@ Public Module SqlServerConnector
             res.OK = True
         Catch ex As Exception
             res.MissatgeError = ex.Message
+            ' Si hem creat la BD en aquesta mateixa operació, no la deixem a mitges
+            If bdCreada Then
+                Try
+                    SqlConnection.ClearAllPools()
+                    Using masterConn As New SqlConnection(conn.BuildMasterConnectionString())
+                        masterConn.Open()
+                        EliminarBd(masterConn, conn.BaseDades)
+                    End Using
+                Catch
+                End Try
+            End If
         End Try
         Return res
     End Function
@@ -437,30 +449,34 @@ Public Module SqlServerConnector
                                 taules As List(Of TablaBBDD),
                                 relacions As List(Of RelacionBBDD)) As ResultatOperacio
         Dim res As New ResultatOperacio()
+        Dim exp As New TSqlExporter()
         Try
             Using destConn As New SqlConnection(conn.BuildConnectionString())
                 destConn.Open()
+                EnTransaccio(destConn,
+                    Sub(tx)
+                        For Each esq As String In TSqlExporter.EsquemesNecessaris(taules)
+                            ExecutarDDL(destConn, tx, exp.GenerarCrearEsquema(esq), res)
+                        Next
+                        For Each t As TablaBBDD In taules
+                            If ExecutarDDL(destConn, tx, exp.GenerarTaula(t), res) Then res.TaulesCreades += 1
+                        Next
 
-                ' Crear taules seleccionades
-                For Each t As TablaBBDD In taules
-                    Dim sql As String = BuildCreateTable(t)
-                    ExecutarDDL(destConn, sql, res)
-                    res.TaulesCreades += 1
-                Next
+                        For Each r As RelacionBBDD In relacions
+                            Dim ft As TablaBBDD = taules.FirstOrDefault(Function(t) t.Id = r.TablaOrigenId)
+                            Dim tt As TablaBBDD = taules.FirstOrDefault(Function(t) t.Id = r.TablaDestinoId)
+                            If ft IsNot Nothing AndAlso tt IsNot Nothing Then
+                                If ExecutarDDL(destConn, tx, exp.GenerarAlterFK(r, ft, tt), res) Then
+                                    res.RelacionsCreades += 1
+                                End If
+                                If r.CrearIndexFK Then CrearIndexSiCal(destConn, tx, r, ft, res)
+                            End If
+                        Next
 
-                ' Crear FK entre les taules seleccionades
-                Dim idsSeleccionats As New HashSet(Of Integer)(taules.Select(Function(t) t.Id))
-                For Each r As RelacionBBDD In relacions
-                    If idsSeleccionats.Contains(r.TablaOrigenId) AndAlso
-                       idsSeleccionats.Contains(r.TablaDestinoId) Then
-                        Dim ft As TablaBBDD = taules.FirstOrDefault(Function(t) t.Id = r.TablaOrigenId)
-                        Dim tt As TablaBBDD = taules.FirstOrDefault(Function(t) t.Id = r.TablaDestinoId)
-                        If ft IsNot Nothing AndAlso tt IsNot Nothing Then
-                            ExecutarDDL(destConn, BuildAlterFK(r, ft, tt), res)
-                            res.RelacionsCreades += 1
-                        End If
-                    End If
-                Next
+                        For Each t As TablaBBDD In taules
+                            AplicarExtProps(destConn, tx, t, res)
+                        Next
+                    End Sub)
             End Using
             res.OK = True
         Catch ex As Exception
@@ -470,183 +486,287 @@ Public Module SqlServerConnector
     End Function
 
     ' ════════════════════════════════════════════════════════
+    ' APLICACIÓ DEL DDL (compartit amb MdfExporter)
+    ' Tot s'executa dins d'una transacció: o s'aplica tot o res.
+    ' ════════════════════════════════════════════════════════
+
+    ''' <summary>BD buida: crea totes les taules, FK, índexs i descripcions.</summary>
+    Friend Sub AplicarDDLComplet(conn As SqlConnection, p As ProyectoBBDD, res As ResultatOperacio)
+        Dim exp As New TSqlExporter()
+        EnTransaccio(conn,
+            Sub(tx)
+                For Each esq As String In TSqlExporter.EsquemesNecessaris(p.Taules)
+                    ExecutarDDL(conn, tx, exp.GenerarCrearEsquema(esq), res)
+                Next
+                For Each t As TablaBBDD In p.Taules
+                    If ExecutarDDL(conn, tx, exp.GenerarTaula(t), res) Then res.TaulesCreades += 1
+                Next
+                For Each r As RelacionBBDD In p.Relacions
+                    Dim ft As TablaBBDD = BuscarTaula(p, r.TablaOrigenId)
+                    Dim tt As TablaBBDD = BuscarTaula(p, r.TablaDestinoId)
+                    If ft IsNot Nothing AndAlso tt IsNot Nothing Then
+                        If ExecutarDDL(conn, tx, exp.GenerarAlterFK(r, ft, tt), res) Then res.RelacionsCreades += 1
+                    End If
+                Next
+                For Each r As RelacionBBDD In p.Relacions
+                    Dim ft As TablaBBDD = BuscarTaula(p, r.TablaOrigenId)
+                    If r.CrearIndexFK AndAlso ft IsNot Nothing Then CrearIndexSiCal(conn, tx, r, ft, res)
+                Next
+                For Each t As TablaBBDD In p.Taules
+                    AplicarExtProps(conn, tx, t, res)
+                Next
+                AplicarExtPropsRelacions(conn, tx, p, res)
+            End Sub)
+    End Sub
+
+    ''' <summary>
+    ''' BD existent: afegeix taules, columnes, FK i índexs que falten i
+    ''' actualitza descripcions. NO elimina res del que ja hi ha.
+    ''' </summary>
+    Friend Sub AplicarDiferencies(conn As SqlConnection, p As ProyectoBBDD, res As ResultatOperacio)
+        Dim exp As New TSqlExporter()
+        EnTransaccio(conn,
+            Sub(tx)
+                ' ── Estat actual de la BD ────────────────────────
+                Dim taulesExist As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+                Dim colsExist As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+                Dim fkExist As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+                Executar(conn, tx,
+                    "SELECT s.name + '.' + t.name FROM sys.tables t " &
+                    "JOIN sys.schemas s ON s.schema_id = t.schema_id;",
+                    Sub(rdr) taulesExist.Add(rdr.GetString(0)))
+                Executar(conn, tx,
+                    "SELECT s.name + '.' + t.name + '.' + c.name FROM sys.columns c " &
+                    "JOIN sys.tables t ON t.object_id = c.object_id " &
+                    "JOIN sys.schemas s ON s.schema_id = t.schema_id;",
+                    Sub(rdr) colsExist.Add(rdr.GetString(0)))
+                Executar(conn, tx,
+                    "SELECT SCHEMA_NAME(schema_id) + '.' + name FROM sys.foreign_keys;",
+                    Sub(rdr) fkExist.Add(rdr.GetString(0)))
+
+                ' ── Esquemes, taules i columnes ──────────────────
+                For Each esq As String In TSqlExporter.EsquemesNecessaris(p.Taules)
+                    ExecutarDDL(conn, tx, exp.GenerarCrearEsquema(esq), res)
+                Next
+                For Each t As TablaBBDD In p.Taules
+                    Dim key As String = t.SchemaEfectiu & "." & t.Nombre
+                    If Not taulesExist.Contains(key) Then
+                        If ExecutarDDL(conn, tx, exp.GenerarTaula(t), res) Then res.TaulesCreades += 1
+                    Else
+                        Dim colsNoves As Integer = 0
+                        For Each f As CampoBBDD In t.Fields
+                            If Not colsExist.Contains(key & "." & f.Nombre) Then
+                                Dim addSql As String = exp.GenerarAddColumn(t, f, res.Advertencies)
+                                If ExecutarDDL(conn, tx, addSql, res) Then colsNoves += 1
+                            End If
+                        Next
+                        If colsNoves > 0 Then res.TaulesAlterades += 1
+                    End If
+                Next
+
+                ' ── Foreign keys noves ───────────────────────────
+                For Each r As RelacionBBDD In p.Relacions
+                    Dim ft As TablaBBDD = BuscarTaula(p, r.TablaOrigenId)
+                    Dim tt As TablaBBDD = BuscarTaula(p, r.TablaDestinoId)
+                    If ft Is Nothing OrElse tt Is Nothing Then Continue For
+                    If Not fkExist.Contains(ft.SchemaEfectiu & "." & r.Nombre) Then
+                        If ExecutarDDL(conn, tx, exp.GenerarAlterFK(r, ft, tt), res) Then res.RelacionsCreades += 1
+                    End If
+                    If r.CrearIndexFK Then CrearIndexSiCal(conn, tx, r, ft, res)
+                Next
+
+                ' ── Descripcions (afegir o actualitzar) ──────────
+                For Each t As TablaBBDD In p.Taules
+                    AplicarExtProps(conn, tx, t, res)
+                Next
+                AplicarExtPropsRelacions(conn, tx, p, res)
+            End Sub)
+    End Sub
+
+    ' ════════════════════════════════════════════════════════
     ' HELPERS INTERNS
     ' ════════════════════════════════════════════════════════
-    Private Function BdExisteix(conn As SqlConnection, nom As String) As Boolean
-        Using cmd As New SqlCommand(
-            "SELECT COUNT(*) FROM sys.databases WHERE name = @n;", conn)
-            cmd.Parameters.AddWithValue("@n", nom)
-            Return CInt(cmd.ExecuteScalar()) > 0
+
+    ''' <summary>
+    ''' Executa l'acció dins d'una transacció. Si falla, la desfà i
+    ''' rellança l'excepció.
+    ''' </summary>
+    Private Sub EnTransaccio(conn As SqlConnection, accio As Action(Of SqlTransaction))
+        Using tx As SqlTransaction = conn.BeginTransaction()
+            Try
+                accio(tx)
+                tx.Commit()
+            Catch
+                Try
+                    tx.Rollback()
+                Catch
+                    ' La transacció ja pot haver estat desfeta pel servidor
+                End Try
+                Throw
+            End Try
+        End Using
+    End Sub
+
+    ''' <summary>
+    ''' Executa una sentència DDL. Retorna True si s'ha executat i False si
+    ''' s'ha ignorat perquè l'objecte ja existia (queda com a advertència).
+    ''' Qualsevol altre error atura el procés.
+    ''' </summary>
+    Private Function ExecutarDDL(conn As SqlConnection, tx As SqlTransaction,
+                                 sql As String, res As ResultatOperacio) As Boolean
+        If String.IsNullOrWhiteSpace(sql) Then Return False
+        Try
+            Using cmd As New SqlCommand(sql, conn, tx)
+                cmd.CommandTimeout = 60
+                cmd.ExecuteNonQuery()
+            End Using
+            Return True
+        Catch ex As SqlException When ex.Number = ERR_OBJECTE_EXISTEIX OrElse ex.Number = ERR_INDEX_EXISTEIX
+            res.Advertencies.Add("Ja existia (ignorat): " & TruncSql(sql))
+            Return False
+        Catch ex As SqlException
+            Throw New Exception("Error SQL " & ex.Number & ": " & ex.Message &
+                                Environment.NewLine & "SQL: " & TruncSql(sql), ex)
+        End Try
+    End Function
+
+    Private Sub Executar(conn As SqlConnection, sql As String, perFila As Action(Of SqlDataReader))
+        Executar(conn, Nothing, sql, perFila)
+    End Sub
+
+    Private Sub Executar(conn As SqlConnection, tx As SqlTransaction, sql As String,
+                         perFila As Action(Of SqlDataReader))
+        Using cmd As New SqlCommand(sql, conn, tx)
+            cmd.CommandTimeout = 60
+            Using rdr As SqlDataReader = cmd.ExecuteReader()
+                Do While rdr.Read()
+                    perFila(rdr)
+                Loop
+            End Using
+        End Using
+    End Sub
+
+    Private Function Escalar(conn As SqlConnection, tx As SqlTransaction, sql As String,
+                             ParamArray params() As SqlParameter) As Integer
+        Using cmd As New SqlCommand(sql, conn, tx)
+            cmd.Parameters.AddRange(params)
+            Dim v As Object = cmd.ExecuteScalar()
+            Return If(v Is Nothing OrElse IsDBNull(v), 0, Convert.ToInt32(v))
         End Using
     End Function
 
+    Private Sub CrearIndexSiCal(conn As SqlConnection, tx As SqlTransaction,
+                                r As RelacionBBDD, ft As TablaBBDD, res As ResultatOperacio)
+        Dim n As Integer = Escalar(conn, tx,
+            "SELECT COUNT(*) FROM sys.indexes WHERE name = @n AND object_id = OBJECT_ID(@o);",
+            New SqlParameter("@n", TSqlExporter.NomIndexFK(r, ft)),
+            New SqlParameter("@o", TSqlExporter.NomTaula(ft)))
+        If n = 0 Then ExecutarDDL(conn, tx, New TSqlExporter().GenerarIndexFK(r, ft), res)
+    End Sub
+
+    ' Afegeix o actualitza les descripcions (MS_Description) d'una taula i els seus camps
+    Private Sub AplicarExtProps(conn As SqlConnection, tx As SqlTransaction,
+                                t As TablaBBDD, res As ResultatOperacio)
+        Dim exp As New TSqlExporter()
+        If Not String.IsNullOrEmpty(t.Descripcion) Then
+            Dim existeix As Boolean = Escalar(conn, tx,
+                "SELECT COUNT(*) FROM sys.extended_properties " &
+                "WHERE class = 1 AND name = 'MS_Description' AND major_id = OBJECT_ID(@o) AND minor_id = 0;",
+                New SqlParameter("@o", TSqlExporter.NomTaula(t))) > 0
+            ExecutarDDL(conn, tx, exp.GenerarExtPropTaula(t, existeix), res)
+        End If
+        For Each f As CampoBBDD In t.Fields
+            If String.IsNullOrEmpty(f.Descripcion) Then Continue For
+            Dim existeix As Boolean = Escalar(conn, tx,
+                "SELECT COUNT(*) FROM sys.extended_properties " &
+                "WHERE class = 1 AND name = 'MS_Description' AND major_id = OBJECT_ID(@o) " &
+                "  AND minor_id = COLUMNPROPERTY(OBJECT_ID(@o), @c, 'ColumnId');",
+                New SqlParameter("@o", TSqlExporter.NomTaula(t)),
+                New SqlParameter("@c", f.Nombre)) > 0
+            ExecutarDDL(conn, tx, exp.GenerarExtPropCamp(t, f, existeix), res)
+        Next
+    End Sub
+
+    Private Sub AplicarExtPropsRelacions(conn As SqlConnection, tx As SqlTransaction,
+                                         p As ProyectoBBDD, res As ResultatOperacio)
+        Dim exp As New TSqlExporter()
+        For Each r As RelacionBBDD In p.Relacions
+            If String.IsNullOrEmpty(r.Descripcion) Then Continue For
+            Dim ft As TablaBBDD = BuscarTaula(p, r.TablaOrigenId)
+            If ft Is Nothing Then Continue For
+            Dim existeix As Boolean = Escalar(conn, tx,
+                "SELECT COUNT(*) FROM sys.extended_properties ep " &
+                "JOIN sys.foreign_keys fk ON fk.object_id = ep.major_id " &
+                "WHERE ep.class = 1 AND ep.name = 'MS_Description' AND ep.minor_id = 0 " &
+                "  AND fk.name = @n AND fk.parent_object_id = OBJECT_ID(@o);",
+                New SqlParameter("@n", r.Nombre),
+                New SqlParameter("@o", TSqlExporter.NomTaula(ft))) > 0
+            If Not existeix Then ExecutarDDL(conn, tx, exp.GenerarExtPropRelacio(r, ft), res)
+        Next
+    End Sub
+
+    Private Function BuscarTaula(p As ProyectoBBDD, id As Integer) As TablaBBDD
+        For Each t As TablaBBDD In p.Taules
+            If t.Id = id Then Return t
+        Next
+        Return Nothing
+    End Function
+
+    Private Function BdExisteix(conn As SqlConnection, nom As String) As Boolean
+        Return Escalar(conn, Nothing, "SELECT COUNT(*) FROM sys.databases WHERE name = @n;",
+                       New SqlParameter("@n", nom)) > 0
+    End Function
+
     Private Sub CrearBd(conn As SqlConnection, nom As String)
-        ' Nom entre brackets per seguretat; no permet injection per control previ
-        Dim sql As String = "CREATE DATABASE [" & nom.Replace("]", "]]") & "];"
-        Using cmd As New SqlCommand(sql, conn)
-            cmd.CommandTimeout = 60
+        Using cmd As New SqlCommand("CREATE DATABASE " & TSqlExporter.Q(nom) & ";", conn)
+            cmd.CommandTimeout = 120
             cmd.ExecuteNonQuery()
         End Using
     End Sub
 
     Private Sub EliminarBd(conn As SqlConnection, nom As String)
         ' Desconnectar sessions actives i eliminar
-        Dim sql As String =
-            "ALTER DATABASE [" & nom.Replace("]", "]]") & "] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; " &
-            "DROP DATABASE [" & nom.Replace("]", "]]") & "];"
-        Using cmd As New SqlCommand(sql, conn)
-            cmd.CommandTimeout = 60
+        Dim q As String = TSqlExporter.Q(nom)
+        Using cmd As New SqlCommand(
+            "ALTER DATABASE " & q & " SET SINGLE_USER WITH ROLLBACK IMMEDIATE; " &
+            "DROP DATABASE " & q & ";", conn)
+            cmd.CommandTimeout = 120
             cmd.ExecuteNonQuery()
         End Using
     End Sub
 
-    Private Sub AplicarDDLComplet(conn As SqlConnection, p As ProyectoBBDD, res As ResultatOperacio)
-        For Each t As TablaBBDD In p.Taules
-            ExecutarDDL(conn, BuildCreateTable(t), res)
-            res.TaulesCreades += 1
-        Next
-        For Each r As RelacionBBDD In p.Relacions
-            Dim ft As TablaBBDD = p.Taules.FirstOrDefault(Function(t) t.Id = r.TablaOrigenId)
-            Dim tt As TablaBBDD = p.Taules.FirstOrDefault(Function(t) t.Id = r.TablaDestinoId)
-            If ft IsNot Nothing AndAlso tt IsNot Nothing Then
-                ExecutarDDL(conn, BuildAlterFK(r, ft, tt), res)
-                res.RelacionsCreades += 1
-            End If
-        Next
-        For Each r As RelacionBBDD In p.Relacions
-            If r.CrearIndexFK Then
-                Dim ft As TablaBBDD = p.Taules.FirstOrDefault(Function(t) t.Id = r.TablaOrigenId)
-                If ft IsNot Nothing Then
-                    ExecutarDDL(conn,
-                        "CREATE NONCLUSTERED INDEX [IX_" & ft.Nombre & "_" & r.CampoFKNombre & "] " &
-                        "ON [" & ft.Schema & "].[" & ft.Nombre & "] ([" & r.CampoFKNombre & "] ASC);", res)
+    ''' <summary>"((0))" → "(0)" ; "(getdate())" → "getdate()" (un sol nivell).</summary>
+    Friend Function TreureParentesisExterns(s As String) As String
+        If s Is Nothing Then Return ""
+        s = s.Trim()
+        If s.Length < 2 OrElse s(0) <> "("c OrElse s(s.Length - 1) <> ")"c Then Return s
+        ' Comprovar que el primer "(" tanca just al final
+        Dim depth As Integer = 0
+        Dim enCadena As Boolean = False
+        For i As Integer = 0 To s.Length - 1
+            Dim ch As Char = s(i)
+            If ch = "'"c Then
+                enCadena = Not enCadena
+            ElseIf Not enCadena Then
+                If ch = "("c Then
+                    depth += 1
+                ElseIf ch = ")"c Then
+                    depth -= 1
+                    If depth = 0 AndAlso i < s.Length - 1 Then Return s
                 End If
             End If
         Next
-        For Each t As TablaBBDD In p.Taules
-            If Not String.IsNullOrEmpty(t.Descripcion) Then
-                ExecutarDDL(conn, BuildExtPropTaula(t), res)
-            End If
-            For Each f As CampoBBDD In t.Fields
-                If Not String.IsNullOrEmpty(f.Descripcion) Then
-                    ExecutarDDL(conn, BuildExtPropCamp(t, f), res)
-                End If
-            Next
-        Next
-    End Sub
-
-    Private Sub AplicarDiferencies(conn As SqlConnection, p As ProyectoBBDD, res As ResultatOperacio)
-        ' Taules existents al servidor
-        Dim taulesExist As New HashSet(Of String)()
-        Using cmd As New SqlCommand(
-            "SELECT TABLE_SCHEMA+'.'+TABLE_NAME FROM INFORMATION_SCHEMA.TABLES " &
-            "WHERE TABLE_TYPE='BASE TABLE';", conn)
-        Using rdr As SqlDataReader = cmd.ExecuteReader()
-            Do While rdr.Read() : taulesExist.Add(rdr.GetString(0).ToUpper()) : Loop
-        End Using
-        End Using
-
-        ' Columnes existents al servidor
-        Dim colsExist As New HashSet(Of String)()
-        Using cmd As New SqlCommand(
-            "SELECT TABLE_SCHEMA+'.'+TABLE_NAME+'.'+COLUMN_NAME " &
-            "FROM INFORMATION_SCHEMA.COLUMNS;", conn)
-        Using rdr As SqlDataReader = cmd.ExecuteReader()
-            Do While rdr.Read() : colsExist.Add(rdr.GetString(0).ToUpper()) : Loop
-        End Using
-        End Using
-
-        ' FK existents al servidor
-        Dim fkExist As New HashSet(Of String)()
-        Using cmd As New SqlCommand("SELECT name FROM sys.foreign_keys;", conn)
-        Using rdr As SqlDataReader = cmd.ExecuteReader()
-            Do While rdr.Read() : fkExist.Add(rdr.GetString(0).ToUpper()) : Loop
-        End Using
-        End Using
-
-        ' Afegir taules noves
-        For Each t As TablaBBDD In p.Taules
-            Dim key As String = (t.Schema & "." & t.Nombre).ToUpper()
-            If Not taulesExist.Contains(key) Then
-                ExecutarDDL(conn, BuildCreateTable(t), res)
-                res.TaulesCreades += 1
-            Else
-                ' Afegir columnes noves
-                For Each f As CampoBBDD In t.Fields
-                    Dim ckey As String = (t.Schema & "." & t.Nombre & "." & f.Nombre).ToUpper()
-                    If Not colsExist.Contains(ckey) Then
-                        Dim addSql As String =
-                            "ALTER TABLE [" & t.Schema & "].[" & t.Nombre & "] " &
-                            "ADD " & BuildFieldDDL(f) & ";"
-                        ExecutarDDL(conn, addSql, res)
-                        res.TaulesAlterades += 1
-                    End If
-                Next
-            End If
-        Next
-
-        ' Afegir FK noves
-        For Each r As RelacionBBDD In p.Relacions
-            If Not fkExist.Contains(r.Nombre.ToUpper()) Then
-                Dim ft As TablaBBDD = p.Taules.FirstOrDefault(Function(t) t.Id = r.TablaOrigenId)
-                Dim tt As TablaBBDD = p.Taules.FirstOrDefault(Function(t) t.Id = r.TablaDestinoId)
-                If ft IsNot Nothing AndAlso tt IsNot Nothing Then
-                    ExecutarDDL(conn, BuildAlterFK(r, ft, tt), res)
-                    res.RelacionsCreades += 1
-                End If
-            End If
-        Next
-    End Sub
-
-    Private Sub ExecutarDDL(conn As SqlConnection, sql As String, res As ResultatOperacio)
-        If String.IsNullOrWhiteSpace(sql) Then Return
-        Try
-            Using cmd As New SqlCommand(sql, conn)
-                cmd.CommandTimeout = 60
-                cmd.ExecuteNonQuery()
-            End Using
-        Catch ex As SqlException
-            If ex.Number = 2714 OrElse ex.Number = 1913 Then
-                res.Advertencies.Add("Ja existia (ignorat): " & TruncSql(sql))
-            Else
-                Throw New Exception("Error SQL " & ex.Number & ": " & ex.Message &
-                                    Environment.NewLine & "SQL: " & TruncSql(sql), ex)
-            End If
-        End Try
-    End Sub
-
-    Private Function BuildCreateTable(t As TablaBBDD) As String
-        Dim exp As New TSqlExporter()
-        ' Reutilitzem TSqlExporter internament via reflexió indirecta
-        ' però és més net cridar-lo directament
-        Return New TSqlExporter().GenerarTaula(t)
-    End Function
-
-    Private Function BuildAlterFK(r As RelacionBBDD,
-                                   ft As TablaBBDD,
-                                   tt As TablaBBDD) As String
-        Return New TSqlExporter().GenerarAlterFK(r, ft, tt)
-    End Function
-
-    Private Function BuildFieldDDL(f As CampoBBDD) As String
-        Return New TSqlExporter().GenerarCamp(f)
-    End Function
-
-    Private Function BuildExtPropTaula(t As TablaBBDD) As String
-        Return New TSqlExporter().GenerarExtPropTaula(t)
-    End Function
-
-    Private Function BuildExtPropCamp(t As TablaBBDD, f As CampoBBDD) As String
-        Return New TSqlExporter().GenerarExtPropCamp(t, f)
+        Return s.Substring(1, s.Length - 2).Trim()
     End Function
 
     Private Function TruncSql(sql As String) As String
-        Dim s As String = sql.Trim().Replace(Environment.NewLine, " ")
-        If s.Length > 120 Then Return s.Substring(0, 120) & "…"
+        Dim s As String = sql.Trim().Replace(vbCrLf, " ").Replace(vbLf, " ")
+        If s.Length > 160 Then Return s.Substring(0, 160) & "…"
         Return s
     End Function
 
-    Private Function MapTipus(sqlType As String) As DataType
+    Friend Function MapTipus(sqlType As String) As DataType
         Select Case sqlType.ToLower()
             Case "bit"              : Return DataType.Bit
             Case "tinyint"          : Return DataType.TinyInt
@@ -663,7 +783,7 @@ Public Module SqlServerConnector
             Case "varchar"          : Return DataType.VarChar
             Case "text"             : Return DataType.DbText
             Case "nchar"            : Return DataType.NChar
-            Case "nvarchar"         : Return DataType.NVarChar
+            Case "nvarchar", "sysname" : Return DataType.NVarChar
             Case "ntext"            : Return DataType.NText
             Case "binary"           : Return DataType.DbBinary
             Case "varbinary"        : Return DataType.VarBinary

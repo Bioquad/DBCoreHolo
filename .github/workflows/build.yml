@@ -1,0 +1,22 @@
+name: Build i tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Compilar l'aplicació
+        run: dotnet build DBCoreHolographic.vbproj -c Release -p:GenerateManifests=false
+
+      - name: Tests del nucli
+        run: dotnet test Tests/DBCoreHolographic.Tests.vbproj -c Release --logger "console;verbosity=normal"

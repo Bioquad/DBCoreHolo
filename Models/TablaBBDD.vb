@@ -41,6 +41,25 @@ Public Class TablaBBDD
         End Get
     End Property
 
+    ''' <summary>
+    ''' Tots els camps que formen la PK (més d'un si la PK és composta),
+    ''' en l'ordre en què apareixen a la taula.
+    ''' </summary>
+    <Newtonsoft.Json.JsonIgnore>
+    Public ReadOnly Property PKFields As List(Of CampoBBDD)
+        Get
+            Return Fields.FindAll(Function(f) f.EsPK)
+        End Get
+    End Property
+
+    ''' <summary>Esquema efectiu: "dbo" si no se n'ha indicat cap.</summary>
+    <Newtonsoft.Json.JsonIgnore>
+    Public ReadOnly Property SchemaEfectiu As String
+        Get
+            Return If(String.IsNullOrWhiteSpace(Schema), "dbo", Schema.Trim())
+        End Get
+    End Property
+
     Public ReadOnly Property ColorGL As Color
         Get
             Select Case GrupColor

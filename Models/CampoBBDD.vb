@@ -43,10 +43,9 @@ Public Class CampoBBDD
         End Get
         Set(value As Boolean)
             _esPK = value
-            If value Then
-                NotNull = True
-                _esFK = False
-            End If
+            ' Una PK sempre és NOT NULL. Pot ser alhora FK (relacions
+            ' identificatives i taules intermèdies amb PK composta).
+            If value Then NotNull = True
         End Set
     End Property
 
@@ -56,7 +55,6 @@ Public Class CampoBBDD
             Return _esFK
         End Get
         Set(value As Boolean)
-            If value AndAlso _esPK Then Return
             _esFK = value
         End Set
     End Property

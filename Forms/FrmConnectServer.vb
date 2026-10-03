@@ -42,6 +42,7 @@ Public Class FrmConnectServer
     Private _cmbBD          As ComboBox
     Private _btnLlistarBD   As Button
     Private _chkEncrypt     As CheckBox
+    Private _chkValidarCert As CheckBox
     Private _lblStatus      As Label
     Private _btnTest        As Button
     Private _btnConnectar   As Button
@@ -171,8 +172,12 @@ Public Class FrmConnectServer
 
         ' ── Opcions addicionals ───────────────────────────────────
         _chkEncrypt = AppStyle.CrearCheckBox(Locale.Str("CON_ENCRYPT"))
-        _chkEncrypt.SetBounds(XL, y, 300, 20)
+        _chkEncrypt.SetBounds(XL, y, 250, 20)
         pnl.Controls.Add(_chkEncrypt)
+
+        _chkValidarCert = AppStyle.CrearCheckBox(Locale.Str("CON_VALIDAR_CERT"))
+        _chkValidarCert.SetBounds(XR, y, W - XR, 20)
+        pnl.Controls.Add(_chkValidarCert)
         y += 28
 
         ' ── Separador ────────────────────────────────────────────
@@ -220,6 +225,7 @@ Public Class FrmConnectServer
         _txtPort.Text     = _connPrevia.Port.ToString()
         _cmbBD.Text       = _connPrevia.BaseDades
         _chkEncrypt.Checked = _connPrevia.Encrypt
+        _chkValidarCert.Checked = Not _connPrevia.TrustServerCertificate
         If _connPrevia.AuthWindows Then
             _rdbWindows.Checked = True
         Else
@@ -247,60 +253,35 @@ Public Class FrmConnectServer
         c.Usuari      = _txtUsuari.Text.Trim()
         c.Contrasenya = _txtPass.Text
         c.Encrypt     = _chkEncrypt.Checked
+        c.TrustServerCertificate = Not _chkValidarCert.Checked
         Dim p As Integer = 1433
         If Integer.TryParse(_txtPort.Text.Trim(), p) Then c.Port = p
         Return c
     End Function
 
     ' ── Test de connexió ─────────────────────────────────────────
-    Private Sub BtnTest_Click(s As Object, e As EventArgs)
+    Private Async Sub BtnTest_Click(s As Object, e As EventArgs)
         SetStatus(Locale.Str("CON_CONNECTANT"), AppStyle.ColTextFeble)
-        _btnTest.Enabled      = False
-        _btnConnectar.Enabled = False
-        Application.DoEvents()
-
         Dim conn As SqlServerConnector.ConnexioServidor = ConstruirConnexio()
         Dim err As String = ""
 
-        Dim t As New Thread(Sub()
-            err = SqlServerConnector.TestConnexio(conn)
-        End Sub)
-        t.IsBackground = True
-        t.Start()
-        t.Join(TimeSpan.FromSeconds(conn.TimeoutSeg + 2))
-
-        If t.IsAlive Then
-            t.Interrupt()
-            err = Locale.Str("CON_TIMEOUT1") & conn.TimeoutSeg & "s)."
-        End If
+        ' El timeout de connexió el controla la mateixa cadena de connexió
+        Await OperacioLlarga.ExecutarAsync(Me, Sub() err = SqlServerConnector.TestConnexio(conn))
 
         If String.IsNullOrEmpty(err) Then
             SetStatus(Locale.Str("CON_OK") & conn.Servidor, AppStyle.ColAccentSec)
         Else
             SetStatus("✗  " & err, AppStyle.ColPerill)
         End If
-
-        _btnTest.Enabled      = True
-        _btnConnectar.Enabled = True
     End Sub
 
     ' ── Llistar bases de dades ───────────────────────────────────
-    Private Sub BtnLlistarBD_Click(s As Object, e As EventArgs)
+    Private Async Sub BtnLlistarBD_Click(s As Object, e As EventArgs)
         SetStatus(Locale.Str("CON_LLEGINT_BD"), AppStyle.ColTextFeble)
-        _btnLlistarBD.Enabled = False
-        Application.DoEvents()
-
         Dim conn As SqlServerConnector.ConnexioServidor = ConstruirConnexio()
         Dim llista As List(Of String) = Nothing
 
-        Dim t As New Thread(Sub()
-            llista = SqlServerConnector.LlistarBD(conn)
-        End Sub)
-        t.IsBackground = True
-        t.Start()
-        t.Join(TimeSpan.FromSeconds(conn.TimeoutSeg + 2))
-
-        _btnLlistarBD.Enabled = True
+        Await OperacioLlarga.ExecutarAsync(Me, Sub() llista = SqlServerConnector.LlistarBD(conn))
 
         If llista IsNot Nothing AndAlso llista.Count > 0 Then
             Dim textAntic As String = _cmbBD.Text
@@ -316,7 +297,7 @@ Public Class FrmConnectServer
     End Sub
 
     ' ── Connectar ────────────────────────────────────────────────
-    Private Sub BtnConnectar_Click(s As Object, e As EventArgs)
+    Private Async Sub BtnConnectar_Click(s As Object, e As EventArgs)
         Dim conn As SqlServerConnector.ConnexioServidor = ConstruirConnexio()
 
         If String.IsNullOrEmpty(conn.Servidor) Then
@@ -333,22 +314,8 @@ Public Class FrmConnectServer
         End If
 
         SetStatus(Locale.Str("CON_VERIFICANT"), AppStyle.ColTextFeble)
-        _btnConnectar.Enabled = False
-        Application.DoEvents()
-
         Dim err As String = ""
-        Dim t As New Thread(Sub()
-            err = SqlServerConnector.TestConnexio(conn)
-        End Sub)
-        t.IsBackground = True
-        t.Start()
-        t.Join(TimeSpan.FromSeconds(conn.TimeoutSeg + 2))
-        If t.IsAlive Then
-            t.Interrupt()
-            err = Locale.Str("CON_TIMEOUT2")
-        End If
-
-        _btnConnectar.Enabled = True
+        Await OperacioLlarga.ExecutarAsync(Me, Sub() err = SqlServerConnector.TestConnexio(conn))
 
         If Not String.IsNullOrEmpty(err) Then
             SetStatus("✗  " & err, AppStyle.ColPerill)

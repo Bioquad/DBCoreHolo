@@ -159,7 +159,7 @@ Double-clicking a field (or selecting it and pressing **Enter**) opens the **Fie
 - **Default value** (NULL, 0, GETDATE(), NEWID()... or free text).
 - **Alias** and **Input Mask**.
 
-> Marking a field as a **PK** automatically enforces NOT NULL and disables FK (ERM rule).
+> Marking a field as a **PK** automatically enforces NOT NULL. A field can be **PK and FK at the same time** (identifying relationships), and several fields marked as PK form a **composite primary key** — the usual way to model the intermediary table of an M:M relationship.
 
 ### ADVANCED Tab
 
@@ -201,11 +201,15 @@ The **Relationship Editor** requires: Source Table → FK Field, Destination Tab
 | Rule | Behavior |
 |---|---|
 | Destination field **must be a PK** | Blocking error |
-| FK and PK **data types** must match | Blocking error |
+| FK and PK **data types** must match, including **length / precision / scale** (e.g. `VARCHAR(50)` ≠ `VARCHAR(200)`) | Blocking error |
+| A single-column FK cannot reference **one part of a composite PK** (unless that field is UNIQUE) | Blocking error |
+| **SET NULL** on an FK field that is NOT NULL | Model error (table flashes) |
 | **Direct M:M prohibited** | Blocking error — create an intermediary table instead |
 | **Duplicate** relationship (same source/destination/field) | Blocking error |
 | Tables and fields must exist | Blocking error |
 | **Self-relationship** (table linking to itself) | Allowed (reflexive relationship) |
+
+Table and field names are compared **case-insensitively**, as SQL Server does with its default collation.
 
 Errors appear in red inside the editor, and the operation cannot be saved until they are resolved. On the sphere, tables with violations **flash in red**.
 
@@ -293,7 +297,7 @@ Accessible from the main menu via *[ 3 ] Configure parameters* or from within th
 - **Debug Mode**: Displays live camera coordinates in the status bar.
 - **Language**: English, Català, Castellano. Changes apply immediately across all open forms; certain UI strings refresh upon restart.
 
-Preferences are saved to `options.json` right next to the executable. This file is user-specific and **should not be pushed to the repository** (it is already excluded by `.gitignore`).
+Preferences are saved to `%AppData%\DBCoreHolographic\opcions.json` (always writable, even when the app is installed under `Program Files`). If an older `opcions.json` exists next to the executable, it is read once so existing settings are kept. This file is user-specific and **should not be pushed to the repository** (it is already excluded by `.gitignore`).
 
 ---
 

@@ -30,7 +30,20 @@ Public Module CommandStack
 
     Private ReadOnly _undo As New LinkedList(Of ICmd)()
     Private ReadOnly _redo As New Stack(Of ICmd)()
-    Private Const MAX As Integer = 50
+    Private _limit As Integer = 50
+
+    ''' <summary>Nombre màxim d'accions a desfer (opció LimitUndo de l'usuari).</summary>
+    Public Property Limit As Integer
+        Get
+            Return _limit
+        End Get
+        Set(value As Integer)
+            _limit = Math.Max(1, value)
+            Do While _undo.Count > _limit
+                _undo.RemoveFirst()
+            Loop
+        End Set
+    End Property
 
     ' Event que es dispara quan el model es modifica (Push, PushSilent, Undo, Redo)
     Public Event Modificat()
@@ -57,7 +70,7 @@ Public Module CommandStack
     Public Sub Push(c As ICmd)
         c.Execute()
         _undo.AddLast(c)
-        If _undo.Count > MAX Then _undo.RemoveFirst()
+        If _undo.Count > _limit Then _undo.RemoveFirst()
         _redo.Clear()
         RaiseEvent Modificat()
     End Sub
@@ -86,7 +99,7 @@ Public Module CommandStack
     ''' </summary>
     Public Sub PushSilent(c As ICmd)
         _undo.AddLast(c)
-        If _undo.Count > MAX Then _undo.RemoveFirst()
+        If _undo.Count > _limit Then _undo.RemoveFirst()
         _redo.Clear()
         RaiseEvent Modificat()
     End Sub

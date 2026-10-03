@@ -22,7 +22,7 @@
     <Copyright>Copyright (C) 2026 Bioquad.github.io</Copyright>
 
     <!-- ClickOnce Configuration -->
-    <PublishUrl>https://github.com/bioquad/DBCoreHolographic/releases/</PublishUrl>
+    <PublishUrl>https://github.com/bioquad/DBCoreHolo/releases/</PublishUrl>
     <InstallUrl></InstallUrl>
     <BootstrapperEnabled>true</BootstrapperEnabled>
     <GenerateManifests>true</GenerateManifests>
@@ -42,6 +42,13 @@
 
   <ItemGroup>
     <Content Include="DBCoreHolo.ico" />
+  </ItemGroup>
+
+  <!-- El projecte de tests té el seu propi .vbproj; no s'ha de compilar aquí -->
+  <ItemGroup>
+    <Compile Remove="Tests\**" />
+    <None Remove="Tests\**" />
+    <EmbeddedResource Remove="Tests\**" />
   </ItemGroup>
 
   <ItemGroup>

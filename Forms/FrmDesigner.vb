@@ -167,6 +167,9 @@ Public Class FrmDesigner
         ' Colors + fonts: AppStyle.AplicarTema recorre tots els OpenForms
         AppStyle.AplicarTema(op.Tema, op.MidaFont)
 
+        ' Límit de l'historial Desfer/Refer
+        CommandStack.Limit = op.LimitUndo
+
         ' Auto-desar
         _autoTimer.Stop()
         If op.AutoDesarActiu Then
@@ -3129,8 +3132,7 @@ Public Class FrmDesigner
                     Case "PostgreSQL" : sql = New PostgreSqlExporter().Generar(_proyecto)
                     Case Else         : sql = New TSqlExporter().Generar(_proyecto)
                 End Select
-                IO.File.WriteAllText(dlg.FileName, sql, System.Text.Encoding.UTF8)
-                SetStatus(Locale.Str("STATUS_EXPORTAT") & IO.Path.GetFileName(dlg.FileName))
+                EscriureScriptSql(dlg.FileName, sql)
             End If
         End Using
     End Sub
@@ -3141,8 +3143,7 @@ Public Class FrmDesigner
             dlg.FileName = _proyecto.Nombre & "_mysql.sql"
             If dlg.ShowDialog() = DialogResult.OK Then
                 Dim sql As String = New MySqlExporter().Generar(_proyecto)
-                IO.File.WriteAllText(dlg.FileName, sql, System.Text.Encoding.UTF8)
-                SetStatus(Locale.Str("STATUS_EXPORTAT") & IO.Path.GetFileName(dlg.FileName))
+                EscriureScriptSql(dlg.FileName, sql)
             End If
         End Using
     End Sub
@@ -3153,14 +3154,26 @@ Public Class FrmDesigner
             dlg.FileName = _proyecto.Nombre & "_postgresql.sql"
             If dlg.ShowDialog() = DialogResult.OK Then
                 Dim sql As String = New PostgreSqlExporter().Generar(_proyecto)
-                IO.File.WriteAllText(dlg.FileName, sql, System.Text.Encoding.UTF8)
-                SetStatus(Locale.Str("STATUS_EXPORTAT") & IO.Path.GetFileName(dlg.FileName))
+                EscriureScriptSql(dlg.FileName, sql)
             End If
         End Using
     End Sub
 
-    Private Sub MnuImportMdf_Click(s As Object, e As EventArgs)
+    ' Desa un script SQL generat i informa de l'error si no es pot escriure
+    Private Sub EscriureScriptSql(ruta As String, sql As String)
+        Try
+            IO.File.WriteAllText(ruta, sql, System.Text.Encoding.UTF8)
+            SetStatus(Locale.Str("STATUS_EXPORTAT") & IO.Path.GetFileName(ruta))
+        Catch ex As Exception
+            MessageBox.Show(Locale.Str("ERR_PREFIX") & ex.Message, Locale.Str("DLG_ERROR"),
+                            MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+    Private Async Sub MnuImportMdf_Click(s As Object, e As EventArgs)
         ' Reutilitza el flux existent d'importació .mdf
+        ' (substitueix el projecte actual: cal confirmar si hi ha canvis)
+        If Not ConfirmarDescartarCanvis() Then Return
         Dim lastDir As String = If(String.IsNullOrEmpty(_rutaFitxer),
                                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                                    IO.Path.GetDirectoryName(_rutaFitxer))
@@ -3170,10 +3183,13 @@ Public Class FrmDesigner
             dlg.Title = Locale.Str("MNU_IMPORTAR_MDF")
             If dlg.ShowDialog() = DialogResult.OK Then
                 Try
-                    Dim proj As ProyectoBBDD = MdfImporter.Importar(dlg.FileName)
+                    Dim ruta As String = dlg.FileName
+                    Dim proj As ProyectoBBDD = Nothing
+                    Await OperacioLlarga.ExecutarAsync(Me, Sub() proj = MdfImporter.Importar(ruta))
                     If proj IsNot Nothing Then
                         _proyecto = proj
                         _rutaFitxer = ""
+                        CommandStack.Clear()
                         MarcarModificat()
                         ActualitzarPanellLateral()
                         _glControl.Invalidate()
@@ -3187,14 +3203,16 @@ Public Class FrmDesigner
         End Using
     End Sub
 
-    Private Sub MnuExportMdf_Click(s As Object, e As EventArgs)
+    Private Async Sub MnuExportMdf_Click(s As Object, e As EventArgs)
         Dim lastDir As String = If(String.IsNullOrEmpty(_rutaFitxer),
                                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                                    IO.Path.GetDirectoryName(_rutaFitxer))
         Using dlg As New FrmExportMdf(_proyecto.Nombre, lastDir)
             If dlg.ShowDialog(Me) = DialogResult.OK Then
-                Dim res As MdfExporter.ExportResult =
-                    MdfExporter.Exportar(dlg.MdfDir, dlg.DbName, _proyecto, dlg.Mode)
+                Dim res As MdfExporter.ExportResult = Nothing
+                Dim dir As String = dlg.MdfDir, nomBd As String = dlg.DbName
+                Dim mode As MdfExporter.ExportMode = dlg.Mode
+                Await OperacioLlarga.ExecutarAsync(Me, Sub() res = MdfExporter.Exportar(dir, nomBd, _proyecto, mode))
                 If res.OK Then
                     SetStatus(Locale.Str("STATUS_EXPORTAT_MDF") & res.MdfPath)
                     MessageBox.Show(
@@ -4235,8 +4253,12 @@ Public Class FrmDesigner
     Private Sub AutoTimer_Tick(s As Object, e As EventArgs) Handles _autoTimer.Tick
         If Not FrmOpcions.Opcions.AutoDesarActiu Then Return
         If String.IsNullOrEmpty(_rutaFitxer) Then Return
+        If Not _modificat Then Return          ' res a desar
+        If Not Me.Enabled Then Return          ' hi ha una operació llarga en curs
         Try
             ProjectSerializer.Desar(_proyecto, _rutaFitxer)
+            _modificat = False
+            ActualitzarTitol()
             SetStatus(Locale.Str("STATUS_AUTODESAT") & DateTime.Now.ToString("HH:mm:ss"))
         Catch ex As Exception
             SetStatus(Locale.Str("STATUS_AUTO_ERR") & ex.Message)
@@ -4383,7 +4405,9 @@ Public Class FrmDesigner
         Select Case res
             Case DialogResult.Yes
                 MnuDesar_Click(Nothing, Nothing)
-                Return True
+                ' Si l'usuari ha cancel·lat "Desar com" o el desat ha fallat,
+                ' els canvis continuen pendents: no es pot continuar
+                Return Not _modificat
             Case DialogResult.No
                 Return True
             Case Else

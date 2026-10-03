@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Tests del nucli (models, validació MER, exportadors i importadors).
+    El nucli no depèn de Windows Forms, de manera que els seus fitxers
+    s'enllacen aquí i els tests s'executen a qualsevol plataforma:
+      dotnet test Tests/DBCoreHolographic.Tests.vbproj
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>DBCoreHolographic</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <OptionStrict>Off</OptionStrict>
+    <OptionExplicit>On</OptionExplicit>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Models\*.vb" LinkBase="Core\Models" />
+    <Compile Include="..\MER\*.vb" LinkBase="Core\MER" />
+    <Compile Include="..\Data\*.vb" LinkBase="Core\Data" />
+    <Compile Include="..\Commands\*.vb" LinkBase="Core\Commands" />
+    <Compile Include="..\Export\*.vb" LinkBase="Core\Export" />
+    <Compile Include="..\Imports\*.vb" LinkBase="Core\Imports" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.1" />
+    <!-- Parser oficial de T-SQL: valida la sintaxi del DDL generat sense SQL Server -->
+    <PackageReference Include="Microsoft.SqlServer.TransactSql.ScriptDom" Version="161.9142.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+</Project>

@@ -7,6 +7,10 @@
 # ── Resultats de compilació ─────────────────────────────────────
 [Bb]in/
 [Oo]bj/
+# Sortida de "Publicar" (els executables es distribueixen com a
+# GitHub Releases, no dins del repositori)
+/Publish/
+TestResults/
 [Oo]ut/
 [Ll]og/
 [Ll]ogs/

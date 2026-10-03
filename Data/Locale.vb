@@ -18,7 +18,7 @@
 
 ' ============================================================
 ' Locale.vb — Cadenes de text localitzades
-' Idioma actiu: llegit des de FrmOpcions.Opcions.Idioma
+' Idioma actiu: llegit des de OpcionsSistema.Actual.Idioma
 ' Ús: Locale.Str("NOM_CLAU")
 ' Implementats: English (EN), Català (CA), Castellano (ES)
 ' ============================================================
@@ -26,7 +26,7 @@
 Public Module Locale
 
     Public Function Str(clau As String) As String
-        Select Case FrmOpcions.Opcions.Idioma
+        Select Case OpcionsSistema.Actual.Idioma
             Case "EN" : Return GetEN(clau)
             Case "ES" : Return GetES(clau)
             Case Else  : Return GetCA(clau)   ' CA és el default
@@ -302,6 +302,7 @@ Public Module Locale
             Case "CON_BD"              : Return "DATABASE"
             Case "CON_LLISTAR"         : Return "▼ LIST"
             Case "CON_ENCRYPT"         : Return "Encrypt connection (Encrypt=True)"
+            Case "CON_VALIDAR_CERT"    : Return "Validate server certificate"
             Case "CON_TEST"            : Return "⚡ TEST"
             Case "CON_CONNECTAR"       : Return "✔  CONNECT"
             Case "CON_CONNECTANT"      : Return "Connecting..."
@@ -400,6 +401,10 @@ Public Module Locale
             Case "MER_PK_NO_EXISTEIX"      : Return "PK field '{0}' does not exist in '{1}'."
             Case "MER_NO_ES_PK"            : Return "'{0}' in '{1}' is not a PK. The FK must reference a PK."
             Case "MER_TIPUS_INCOMPAT"      : Return "Incompatible types: FK={0}, PK={1}"
+            Case "MER_LONG_INCOMPAT"     : Return "Incompatible length/precision: FK={0}, PK={1}"
+            Case "MER_PK_COMPOSTA"       : Return "'{0}' is part of the composite PK of '{1}'. A single-column FK can only reference it if it is UNIQUE."
+            Case "MER_SETNULL_NOTNULL"   : Return "[{0}.{1}] Relation '{2}' uses SET NULL but the field is NOT NULL."
+            Case "MER_REL_TIPUS"         : Return "[{0}.{1}] Type {2} does not match the referenced field {3}.{4} ({5})."
             Case "MER_MM_PROHIBIT"         : Return "Direct M:M relation not allowed. Create an intermediate table."
             Case "MER_REL_DUPLICADA"       : Return "This relation already exists."
             Case "MER_REF_ELIMINAR"        : Return "'{0}.{1}' references '{2}'. Delete the relation first."
@@ -687,6 +692,7 @@ Public Module Locale
             Case "CON_BD"              : Return "BASE DE DATOS"
             Case "CON_LLISTAR"         : Return "▼ LISTAR"
             Case "CON_ENCRYPT"         : Return "Cifrar conexión (Encrypt=True)"
+            Case "CON_VALIDAR_CERT"    : Return "Validar certificado del servidor"
             Case "CON_TEST"            : Return "⚡ TEST"
             Case "CON_CONNECTAR"       : Return "✔  CONECTAR"
             Case "CON_CONNECTANT"      : Return "Conectando..."
@@ -785,6 +791,10 @@ Public Module Locale
             Case "MER_PK_NO_EXISTEIX"      : Return "El campo PK '{0}' no existe en '{1}'."
             Case "MER_NO_ES_PK"            : Return "'{0}' en '{1}' no es PK. La FK debe referenciar una PK."
             Case "MER_TIPUS_INCOMPAT"      : Return "Tipos incompatibles: FK={0}, PK={1}"
+            Case "MER_LONG_INCOMPAT"     : Return "Longitud/precisión incompatibles: FK={0}, PK={1}"
+            Case "MER_PK_COMPOSTA"       : Return "'{0}' forma parte de la PK compuesta de '{1}'. Una FK de una sola columna solo puede referenciarlo si es UNIQUE."
+            Case "MER_SETNULL_NOTNULL"   : Return "[{0}.{1}] La relación '{2}' usa SET NULL pero el campo es NOT NULL."
+            Case "MER_REL_TIPUS"         : Return "[{0}.{1}] El tipo {2} no coincide con el campo referenciado {3}.{4} ({5})."
             Case "MER_MM_PROHIBIT"         : Return "Relación M:M directa no permitida. Crea una tabla intermedia."
             Case "MER_REL_DUPLICADA"       : Return "Esta relación ya existe."
             Case "MER_REF_ELIMINAR"        : Return "'{0}.{1}' referencia a '{2}'. Elimina primero la relación."
@@ -1072,6 +1082,7 @@ Public Module Locale
             Case "CON_BD"              : Return "BASE DE DADES"
             Case "CON_LLISTAR"         : Return "▼ LLISTAR"
             Case "CON_ENCRYPT"         : Return "Xifrar connexió (Encrypt=True)"
+            Case "CON_VALIDAR_CERT"    : Return "Validar certificat del servidor"
             Case "CON_TEST"            : Return "⚡ TEST"
             Case "CON_CONNECTAR"       : Return "✔  CONNECTAR"
             Case "CON_CONNECTANT"      : Return "Connectant..."
@@ -1170,6 +1181,10 @@ Public Module Locale
             Case "MER_PK_NO_EXISTEIX"      : Return "El camp PK '{0}' no existeix a '{1}'."
             Case "MER_NO_ES_PK"            : Return "'{0}' a '{1}' no és PK. La FK ha de referenciar una PK."
             Case "MER_TIPUS_INCOMPAT"      : Return "Tipus incompatibles: FK={0}, PK={1}"
+            Case "MER_LONG_INCOMPAT"     : Return "Longitud/precisió incompatibles: FK={0}, PK={1}"
+            Case "MER_PK_COMPOSTA"       : Return "'{0}' forma part de la PK composta de '{1}'. Una FK d'una sola columna només hi pot fer referència si és UNIQUE."
+            Case "MER_SETNULL_NOTNULL"   : Return "[{0}.{1}] La relació '{2}' fa servir SET NULL però el camp és NOT NULL."
+            Case "MER_REL_TIPUS"         : Return "[{0}.{1}] El tipus {2} no coincideix amb el camp referenciat {3}.{4} ({5})."
             Case "MER_MM_PROHIBIT"         : Return "Relació M:M directa no permesa. Crea una taula intermediària."
             Case "MER_REL_DUPLICADA"       : Return "Aquesta relació ja existeix."
             Case "MER_REF_ELIMINAR"        : Return "'{0}.{1}' referencia '{2}'. Elimina primer la relació."

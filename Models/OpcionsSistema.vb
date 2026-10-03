@@ -49,29 +49,49 @@ Public Class OpcionsSistema
     ' ── Idioma ───────────────────────────────────────────────
     Public Property Idioma As String = "CA"
 
+    ' ── Instància global (carregada en el primer ús) ─────────
+    Private Shared _actual As OpcionsSistema
+    <JsonIgnore>
+    Public Shared ReadOnly Property Actual As OpcionsSistema
+        Get
+            If _actual Is Nothing Then _actual = Carregar()
+            Return _actual
+        End Get
+    End Property
+
     ' ────────────────────────────────────────────────────────
-    ' Ruta del fitxer opcions.json (al costat de l'exe)
+    ' Ruta del fitxer opcions.json
+    ' Es desa a %AppData%\DBCoreHolographic (sempre escrivible, també
+    ' quan l'aplicació s'instal·la a Program Files).
     ' ────────────────────────────────────────────────────────
     Public Shared ReadOnly Property RutaFitxer As String
         Get
             Return Path.Combine(
-                Path.GetDirectoryName(
-                    System.Reflection.Assembly.GetExecutingAssembly().Location),
-                "opcions.json")
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "DBCoreHolographic", "opcions.json")
+        End Get
+    End Property
+
+    ' Ubicació antiga (al costat de l'exe) — només per migrar-ne les opcions
+    Private Shared ReadOnly Property RutaAntiga As String
+        Get
+            Return Path.Combine(System.AppContext.BaseDirectory, "opcions.json")
         End Get
     End Property
 
     ' ── Carregar des de disc (si no existeix, retorna defaults) ─
     Public Shared Function Carregar() As OpcionsSistema
-        Try
-            If File.Exists(RutaFitxer) Then
-                Dim json As String = File.ReadAllText(RutaFitxer, System.Text.Encoding.UTF8)
-                Dim obj As OpcionsSistema = JsonConvert.DeserializeObject(Of OpcionsSistema)(json)
-                If obj IsNot Nothing Then Return obj
-            End If
-        Catch
-            ' Si el fitxer és corrupte, ignorem i retornem defaults
-        End Try
+        For Each ruta As String In {RutaFitxer, RutaAntiga}
+            Try
+                If File.Exists(ruta) Then
+                    Dim json As String = File.ReadAllText(ruta, System.Text.Encoding.UTF8)
+                    Dim obj As OpcionsSistema = JsonConvert.DeserializeObject(Of OpcionsSistema)(json)
+                    If obj IsNot Nothing Then Return obj
+                End If
+            Catch
+                ' Si el fitxer és corrupte, ignorem i provem el següent / defaults
+            End Try
+        Next
         Return New OpcionsSistema()
     End Function
 
@@ -79,7 +99,7 @@ Public Class OpcionsSistema
     Public Sub Desar()
         Try
             Dim json As String = JsonConvert.SerializeObject(Me, Formatting.Indented)
-            File.WriteAllText(RutaFitxer, json, System.Text.Encoding.UTF8)
+            ProjectSerializer.EscriureAtomic(RutaFitxer, json)
         Catch
             ' Silent fail — no podem bloquejar l'app per un error d'opcions
         End Try

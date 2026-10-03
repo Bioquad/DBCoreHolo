@@ -18,245 +18,222 @@ Imports System.Text
 Imports System.Collections.Generic
 
 ' ============================================================
-' PostgreSqlExporter.vb — Generador DDL per a PostgreSQL
-' Holographic DB — Alfa 0.24
+' PostgreSqlExporter.vb — Generador DDL per a PostgreSQL 13+
 ' ============================================================
 Public Class PostgreSqlExporter
 
+    Private ReadOnly _avisos As New List(Of String)()
+    Private _calPostGis As Boolean = False
+
     Public Function Generar(p As ProyectoBBDD) As String
-        Dim sb As New StringBuilder()
-        sb.AppendLine("-- ============================================")
-        sb.AppendLine("-- DDL PostgreSQL generat per Holografic DB")
-        sb.AppendLine("-- Projecte : " & p.Nombre)
-        sb.AppendLine("-- Motor    : PostgreSQL")
-        sb.AppendLine("-- Data     : " & DateTime.Now.ToString("dd/MM/yyyy HH:mm"))
-        sb.AppendLine("-- ============================================")
-        sb.AppendLine()
+        _avisos.Clear()
+        _calPostGis = False
+
+        Dim cos As New StringBuilder()
 
         For Each t As TablaBBDD In p.Taules
-            sb.Append(CreateTable(t))
+            cos.Append(CreateTable(t))
         Next
 
         For Each r As RelacionBBDD In p.Relacions
-            Dim ft As TablaBBDD = Nothing
-            Dim tt As TablaBBDD = Nothing
-            For Each t As TablaBBDD In p.Taules
-                If t.Id = r.TablaOrigenId Then ft = t
-                If t.Id = r.TablaDestinoId Then tt = t
-            Next
-            If ft IsNot Nothing AndAlso tt IsNot Nothing Then
-                sb.Append(AlterFK(r, ft, tt))
-            End If
+            Dim ft As TablaBBDD = BuscarTaula(p, r.TablaOrigenId)
+            Dim tt As TablaBBDD = BuscarTaula(p, r.TablaDestinoId)
+            If ft IsNot Nothing AndAlso tt IsNot Nothing Then cos.Append(AlterFK(r, ft, tt))
         Next
 
         ' INDEX per FK
         For Each r As RelacionBBDD In p.Relacions
-            If r.CrearIndexFK Then
-                Dim ft As TablaBBDD = Nothing
-                For Each t As TablaBBDD In p.Taules
-                    If t.Id = r.TablaOrigenId Then ft = t : Exit For
-                Next
-                If ft IsNot Nothing Then
-                    sb.AppendLine("CREATE INDEX ""IX_" & ft.Nombre & "_" & r.CampoFKNombre & """")
-                    sb.AppendLine("  ON " & Q(ft.Nombre) & " (" & Q(r.CampoFKNombre) & " ASC);")
-                    sb.AppendLine()
-                End If
-            End If
+            If Not r.CrearIndexFK Then Continue For
+            Dim ft As TablaBBDD = BuscarTaula(p, r.TablaOrigenId)
+            If ft Is Nothing Then Continue For
+            cos.AppendLine("CREATE INDEX " & Q("IX_" & ft.Nombre & "_" & r.CampoFKNombre) &
+                           " ON " & Q(ft.Nombre) & " (" & Q(r.CampoFKNombre) & ");")
+            cos.AppendLine()
         Next
 
-        ' COMMENT ON COLUMN i COMMENT ON TABLE
+        ' COMMENT ON TABLE / COLUMN
         For Each t As TablaBBDD In p.Taules
             If Not String.IsNullOrEmpty(t.Descripcion) Then
-                Dim d As String = t.Descripcion.Replace("'", "''")
-                sb.AppendLine("COMMENT ON TABLE " & Q(t.Nombre) & " IS '" & d & "';")
-                sb.AppendLine()
+                cos.AppendLine("COMMENT ON TABLE " & Q(t.Nombre) & " IS '" & Lit(t.Descripcion) & "';")
             End If
             For Each f As CampoBBDD In t.Fields
                 If Not String.IsNullOrEmpty(f.Descripcion) Then
-                    Dim d As String = f.Descripcion.Replace("'", "''")
-                    sb.AppendLine("COMMENT ON COLUMN " & Q(t.Nombre) & "." & Q(f.Nombre) & " IS '" & d & "';")
+                    cos.AppendLine("COMMENT ON COLUMN " & Q(t.Nombre) & "." & Q(f.Nombre) &
+                                   " IS '" & Lit(f.Descripcion) & "';")
                 End If
             Next
         Next
+        cos.AppendLine()
 
-        ' Descripció de relacions (COMMENT ON CONSTRAINT — PostgreSQL 11+)
+        ' Descripció de relacions
         For Each r As RelacionBBDD In p.Relacions
-            If Not String.IsNullOrEmpty(r.Descripcion) Then
-                Dim ft As TablaBBDD = Nothing
-                For Each t As TablaBBDD In p.Taules
-                    If t.Id = r.TablaOrigenId Then ft = t : Exit For
-                Next
-                If ft IsNot Nothing Then
-                    Dim d As String = r.Descripcion.Replace("'", "''")
-                    sb.AppendLine("COMMENT ON CONSTRAINT """ & r.Nombre & """ ON " & Q(ft.Nombre) & " IS '" & d & "';")
-                    sb.AppendLine()
-                End If
-            End If
+            If String.IsNullOrEmpty(r.Descripcion) Then Continue For
+            Dim ft As TablaBBDD = BuscarTaula(p, r.TablaOrigenId)
+            If ft Is Nothing Then Continue For
+            cos.AppendLine("COMMENT ON CONSTRAINT " & Q(r.Nombre) & " ON " & Q(ft.Nombre) &
+                           " IS '" & Lit(r.Descripcion) & "';")
         Next
+        cos.AppendLine()
 
-        ' ── Bloc de notes internes (Comentari)
-        Dim hasNotes As Boolean = p.Taules.Any(Function(t) Not String.IsNullOrEmpty(t.Comentari)) OrElse
-                                  p.Taules.Any(Function(t) t.Fields.Any(Function(f) Not String.IsNullOrEmpty(f.Comentari))) OrElse
-                                  p.Relacions.Any(Function(r) Not String.IsNullOrEmpty(r.Comentari))
-        If hasNotes Then
-            sb.AppendLine("-- ══════════════════════════════════════════════════")
-            sb.AppendLine("-- NOTES DE DISSENY  (notes internes, no són SQL)")
-            sb.AppendLine("-- ══════════════════════════════════════════════════")
-            For Each t As TablaBBDD In p.Taules
-                If Not String.IsNullOrEmpty(t.Comentari) Then
-                    sb.AppendLine("-- [TAULA " & t.Nombre & "] " & t.Comentari.Replace(Environment.NewLine, " "))
-                End If
-                For Each f As CampoBBDD In t.Fields
-                    If Not String.IsNullOrEmpty(f.Comentari) Then
-                        sb.AppendLine("--   [CAMP " & t.Nombre & "." & f.Nombre & "] " & f.Comentari.Replace(Environment.NewLine, " "))
-                    End If
-                Next
-            Next
-            For Each r As RelacionBBDD In p.Relacions
-                If Not String.IsNullOrEmpty(r.Comentari) Then
-                    sb.AppendLine("-- [RELACIO " & r.Nombre & "] " & r.Comentari.Replace(Environment.NewLine, " "))
-                End If
-            Next
-            sb.AppendLine("-- ══════════════════════════════════════════════════")
+        TSqlExporter.AfegirNotesDisseny(cos, p)
+
+        Dim sb As New StringBuilder()
+        sb.AppendLine("-- ============================================")
+        sb.AppendLine("-- DDL PostgreSQL generat per Holografic DB")
+        sb.AppendLine("-- Projecte : " & UnaLinia(p.Nombre))
+        sb.AppendLine("-- Motor    : PostgreSQL 13+")
+        sb.AppendLine("-- Data     : " & DateTime.Now.ToString("dd/MM/yyyy HH:mm"))
+        sb.AppendLine("-- ============================================")
+        If TeExpressions(p) Then
+            _avisos.Add("Les expressions CHECK i de columnes calculades es copien del model: revisa que siguin sintaxi PostgreSQL.")
+        End If
+        For Each a As String In _avisos.Distinct()
+            sb.AppendLine("-- AVÍS: " & a)
+        Next
+        sb.AppendLine()
+        If _calPostGis Then
+            sb.AppendLine("-- Els tipus GEOGRAPHY/GEOMETRY requereixen l'extensió PostGIS")
+            sb.AppendLine("CREATE EXTENSION IF NOT EXISTS postgis;")
             sb.AppendLine()
         End If
-
+        sb.Append(cos)
         Return sb.ToString()
     End Function
 
     Private Function CreateTable(t As TablaBBDD) As String
-        Dim sb As New StringBuilder()
-        sb.AppendLine("CREATE TABLE " & Q(t.Nombre) & " (")
-
         Dim lines As New List(Of String)()
 
         For Each f As CampoBBDD In t.Fields
-            lines.Add("  " & FieldDDL(f, t.Nombre))
+            lines.Add("  " & FieldDDL(t, f))
         Next
 
-        ' PRIMARY KEY
-        Dim pk As CampoBBDD = t.PKField
-        If pk IsNot Nothing Then
-            lines.Add("  CONSTRAINT ""PK_" & t.Nombre & """ PRIMARY KEY (" & Q(pk.Nombre) & ")")
+        Dim pks As List(Of CampoBBDD) = t.PKFields
+        If pks.Count > 0 Then
+            lines.Add("  CONSTRAINT " & Q("PK_" & t.Nombre) & " PRIMARY KEY (" &
+                      String.Join(", ", pks.Select(Function(k) Q(k.Nombre))) & ")")
         End If
 
-        ' UNIQUE
         For Each f As CampoBBDD In t.Fields
-            If f.EsUnique AndAlso Not f.EsPK Then
-                lines.Add("  CONSTRAINT ""UQ_" & t.Nombre & "_" & f.Nombre & """ UNIQUE (" & Q(f.Nombre) & ")")
+            If f.EsUnique AndAlso Not (f.EsPK AndAlso pks.Count = 1) Then
+                lines.Add("  CONSTRAINT " & Q("UQ_" & t.Nombre & "_" & f.Nombre) & " UNIQUE (" & Q(f.Nombre) & ")")
             End If
         Next
 
-        ' CHECK
         For Each f As CampoBBDD In t.Fields
-            If Not String.IsNullOrEmpty(f.CheckExpression) Then
-                lines.Add("  CONSTRAINT ""CK_" & t.Nombre & "_" & f.Nombre & """ CHECK (" & f.CheckExpression & ")")
+            If Not String.IsNullOrWhiteSpace(f.CheckExpression) Then
+                lines.Add("  CONSTRAINT " & Q("CK_" & t.Nombre & "_" & f.Nombre) &
+                          " CHECK (" & ConvertirExpressio(f.CheckExpression.Trim(), Motor.PostgreSql, t) & ")")
             End If
         Next
 
-        For i As Integer = 0 To lines.Count - 1
-            If i < lines.Count - 1 Then
-                sb.AppendLine(lines(i) & ",")
-            Else
-                sb.AppendLine(lines(i))
-            End If
-        Next
-
+        Dim sb As New StringBuilder()
+        sb.AppendLine("CREATE TABLE " & Q(t.Nombre) & " (")
+        sb.AppendLine(String.Join("," & Environment.NewLine, lines))
         sb.AppendLine(");")
         sb.AppendLine()
         Return sb.ToString()
     End Function
 
-    Private Function FieldDDL(f As CampoBBDD, tNom As String) As String
+    Private Function FieldDDL(t As TablaBBDD, f As CampoBBDD) As String
         Dim sb As New StringBuilder()
-        sb.Append(Q(f.Nombre) & " ")
+        sb.Append(Q(f.Nombre) & " " & SqlType(t, f))
 
         If f.EsCalculado Then
-            sb.Append(SqlType(f) & " GENERATED ALWAYS AS (" & f.FormulaCalculo & ")")
-            If f.EsPersistido Then sb.Append(" STORED")
+            ' PostgreSQL (fins a la v17) només admet columnes generades STORED
+            If Not f.EsPersistido Then
+                Avis(t, f, "columna calculada no persistida → STORED (PostgreSQL només admet STORED)")
+            End If
+            sb.Append(" GENERATED ALWAYS AS (" & ConvertirExpressio(f.FormulaCalculo, Motor.PostgreSql, t) & ") STORED")
             Return sb.ToString()
         End If
 
-        ' SERIAL / BIGSERIAL si és identity
         If f.EsIdentity Then
-            Select Case f.TipoDato
-                Case DataType.BigInt : sb.Append("BIGSERIAL")
-                Case DataType.SmallInt : sb.Append("SMALLSERIAL")
-                Case Else : sb.Append("SERIAL")
-            End Select
-        Else
-            sb.Append(SqlType(f))
+            If EsEnter(f.TipoDato) Then
+                sb.Append(" GENERATED BY DEFAULT AS IDENTITY (START WITH " & f.IdentitySeed &
+                          " INCREMENT BY " & f.IdentityIncrement & ")")
+            Else
+                Avis(t, f, "IDENTITY només és vàlid en tipus enters; s'ha omès")
+            End If
         End If
 
-        If f.NotNull Then sb.Append(" NOT NULL") Else sb.Append(" NULL")
+        sb.Append(If(f.NotNull OrElse f.EsPK OrElse f.EsIdentity, " NOT NULL", " NULL"))
 
-        If Not String.IsNullOrEmpty(f.DefaultValue) Then
-            Dim dv As String = f.DefaultValue
-            ' Adaptar funcions T-SQL a PostgreSQL
-            dv = dv.Replace("GETDATE()", "NOW()").Replace("GETUTCDATE()", "NOW() AT TIME ZONE 'UTC'")
-            dv = dv.Replace("NEWID()", "gen_random_uuid()")
-            sb.Append(" DEFAULT " & dv)
+        If Not String.IsNullOrWhiteSpace(f.DefaultValue) AndAlso Not f.EsIdentity Then
+            sb.Append(" DEFAULT " & ConvertirDefault(f.DefaultValue, f, Motor.PostgreSql, t))
         End If
 
         Return sb.ToString()
     End Function
 
-    Private Function SqlType(f As CampoBBDD) As String
+    Private Function SqlType(t As TablaBBDD, f As CampoBBDD) As String
         Select Case f.TipoDato
-            Case DataType.Bit           : Return "BOOLEAN"
-            Case DataType.TinyInt       : Return "SMALLINT"
-            Case DataType.SmallInt      : Return "SMALLINT"
-            Case DataType.DbInt         : Return "INTEGER"
-            Case DataType.BigInt        : Return "BIGINT"
-            Case DataType.DbDecimal     : Return "DECIMAL(" & f.Precision & "," & f.Escala & ")"
-            Case DataType.DbNumeric     : Return "NUMERIC(" & f.Precision & "," & f.Escala & ")"
-            Case DataType.Money         : Return "NUMERIC(19,4)"
-            Case DataType.SmallMoney    : Return "NUMERIC(10,4)"
-            Case DataType.DbFloat       : Return "DOUBLE PRECISION"
-            Case DataType.DbReal        : Return "REAL"
-            Case DataType.DbChar        : Return "CHAR(" & Math.Max(1, f.Longitud) & ")"
-            Case DataType.VarChar       : If f.LongitudMax Then Return "TEXT" Else Return "VARCHAR(" & Math.Max(1, f.Longitud) & ")"
-            Case DataType.VarCharMax    : Return "TEXT"
-            Case DataType.DbText        : Return "TEXT"
-            Case DataType.NChar         : Return "CHAR(" & Math.Max(1, f.Longitud) & ")"
-            Case DataType.NVarChar      : If f.LongitudMax Then Return "TEXT" Else Return "VARCHAR(" & Math.Max(1, f.Longitud) & ")"
-            Case DataType.NVarCharMax   : Return "TEXT"
-            Case DataType.NText         : Return "TEXT"
-            Case DataType.DbBinary      : Return "BYTEA"
-            Case DataType.VarBinary     : Return "BYTEA"
-            Case DataType.VarBinaryMax  : Return "BYTEA"
-            Case DataType.DbImage       : Return "BYTEA"
-            Case DataType.DateOnly      : Return "DATE"
-            Case DataType.TimeOnly      : Return "TIME"
-            Case DataType.DbDateTime    : Return "TIMESTAMP"
-            Case DataType.DateTime2     : Return "TIMESTAMP(6)"
-            Case DataType.SmallDateTime : Return "TIMESTAMP"
-            Case DataType.DateTimeOffset: Return "TIMESTAMPTZ"
-            Case DataType.DbTimestamp   : Return "TIMESTAMP"
-            Case DataType.UniqueIdentifier: Return "UUID"
-            Case DataType.DbXml         : Return "XML"
-            Case DataType.SqlVariant    : Return "TEXT"
-            Case DataType.RowVersion    : Return "BYTEA"
-            Case Else                   : Return "INTEGER"
+            Case DataType.Bit              : Return "BOOLEAN"
+            Case DataType.TinyInt          : Return "SMALLINT"
+            Case DataType.SmallInt         : Return "SMALLINT"
+            Case DataType.DbInt            : Return "INTEGER"
+            Case DataType.BigInt           : Return "BIGINT"
+            Case DataType.DbDecimal        : Return "DECIMAL(" & Prec(f) & "," & Esc(f) & ")"
+            Case DataType.DbNumeric        : Return "NUMERIC(" & Prec(f) & "," & Esc(f) & ")"
+            Case DataType.Money            : Return "NUMERIC(19,4)"
+            Case DataType.SmallMoney       : Return "NUMERIC(10,4)"
+            Case DataType.DbFloat          : Return "DOUBLE PRECISION"
+            Case DataType.DbReal           : Return "REAL"
+            Case DataType.DbChar           : Return "CHAR(" & Lon(f) & ")"
+            Case DataType.VarChar          : Return If(f.LongitudMax, "TEXT", "VARCHAR(" & Lon(f) & ")")
+            Case DataType.VarCharMax       : Return "TEXT"
+            Case DataType.DbText           : Return "TEXT"
+            Case DataType.NChar            : Return "CHAR(" & Lon(f) & ")"
+            Case DataType.NVarChar         : Return If(f.LongitudMax, "TEXT", "VARCHAR(" & Lon(f) & ")")
+            Case DataType.NVarCharMax      : Return "TEXT"
+            Case DataType.NText            : Return "TEXT"
+            Case DataType.DbBinary, DataType.VarBinary, DataType.VarBinaryMax, DataType.DbImage
+                Return "BYTEA"
+            Case DataType.DateOnly         : Return "DATE"
+            Case DataType.TimeOnly         : Return "TIME"
+            Case DataType.DbDateTime       : Return "TIMESTAMP(3)"
+            Case DataType.DateTime2        : Return "TIMESTAMP(6)"
+            Case DataType.SmallDateTime    : Return "TIMESTAMP(0)"
+            Case DataType.DateTimeOffset   : Return "TIMESTAMPTZ"
+            Case DataType.DbTimestamp, DataType.RowVersion
+                Avis(t, f, "ROWVERSION/TIMESTAMP de SQL Server no té equivalent → BYTEA (usa xmin o un trigger si cal control de versions)")
+                Return "BYTEA"
+            Case DataType.UniqueIdentifier : Return "UUID"
+            Case DataType.DbXml            : Return "XML"
+            Case DataType.DbGeography
+                _calPostGis = True
+                Return "GEOGRAPHY"
+            Case DataType.DbGeometry
+                _calPostGis = True
+                Return "GEOMETRY"
+            Case DataType.HierarchyId
+                Avis(t, f, "HIERARCHYID no existeix a PostgreSQL → TEXT (o l'extensió ltree)")
+                Return "TEXT"
+            Case DataType.SqlVariant
+                Avis(t, f, "SQL_VARIANT no existeix a PostgreSQL → TEXT")
+                Return "TEXT"
+            Case Else                      : Return "INTEGER"
         End Select
     End Function
 
     Private Function AlterFK(r As RelacionBBDD, ft As TablaBBDD, tt As TablaBBDD) As String
         Dim sb As New StringBuilder()
         sb.AppendLine("ALTER TABLE " & Q(ft.Nombre))
-        sb.AppendLine("  ADD CONSTRAINT """ & r.Nombre & """")
+        sb.AppendLine("  ADD CONSTRAINT " & Q(r.Nombre))
         sb.AppendLine("  FOREIGN KEY (" & Q(r.CampoFKNombre) & ")")
         sb.AppendLine("  REFERENCES " & Q(tt.Nombre) & " (" & Q(r.CampoPKNombre) & ")")
         sb.AppendLine("  ON DELETE " & OnAction(r.OnDelete))
-        sb.AppendLine("  ON UPDATE " & OnAction(r.OnUpdate) & ";")
+        sb.Append("  ON UPDATE " & OnAction(r.OnUpdate))
+        ' WITH NOCHECK de SQL Server ≈ NOT VALID (no valida les files existents)
+        If r.WithCheck = WithCheckOption.WithNoCheck Then sb.Append(" NOT VALID")
+        sb.AppendLine(";")
         If r.Disabled Then
-            sb.AppendLine("-- (constraint disabled — no equivalent directe en PostgreSQL)")
+            _avisos.Add("FK """ & r.Nombre & """ està desactivada al model; PostgreSQL no admet FK desactivades i es crea activa.")
         End If
         sb.AppendLine()
         Return sb.ToString()
     End Function
 
-    Private Function OnAction(a As OnDeleteUpdateAction) As String
+    Private Shared Function OnAction(a As OnDeleteUpdateAction) As String
         Select Case a
             Case OnDeleteUpdateAction.DoCascade  : Return "CASCADE"
             Case OnDeleteUpdateAction.SetNull    : Return "SET NULL"
@@ -266,9 +243,41 @@ Public Class PostgreSqlExporter
         End Select
     End Function
 
-    ' Double-quote per a PostgreSQL
-    Private Function Q(nom As String) As String
-        Return """" & nom & """"
+    Private Sub Avis(t As TablaBBDD, f As CampoBBDD, msg As String)
+        _avisos.Add("[" & t.Nombre & "].[" & f.Nombre & "]: " & msg)
+    End Sub
+
+    Private Shared Function BuscarTaula(p As ProyectoBBDD, id As Integer) As TablaBBDD
+        For Each t As TablaBBDD In p.Taules
+            If t.Id = id Then Return t
+        Next
+        Return Nothing
+    End Function
+
+    Private Shared Function EsEnter(dt As DataType) As Boolean
+        Return dt = DataType.TinyInt OrElse dt = DataType.SmallInt OrElse
+               dt = DataType.DbInt OrElse dt = DataType.BigInt
+    End Function
+
+    Private Shared Function Lon(f As CampoBBDD) As Integer
+        Return Math.Max(1, f.Longitud)
+    End Function
+
+    Private Shared Function Prec(f As CampoBBDD) As Integer
+        Return Math.Min(1000, Math.Max(1, f.Precision))
+    End Function
+
+    Private Shared Function Esc(f As CampoBBDD) As Integer
+        Return Math.Min(Prec(f), Math.Max(0, f.Escala))
+    End Function
+
+    Private Shared Function Lit(s As String) As String
+        Return s.Replace("'", "''")
+    End Function
+
+    ' Double-quote per a PostgreSQL (la " interna es duplica)
+    Private Shared Function Q(nom As String) As String
+        Return """" & If(nom, "").Replace("""", """""") & """"
     End Function
 
 End Class

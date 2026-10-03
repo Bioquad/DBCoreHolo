@@ -299,26 +299,19 @@ Public Class FrmServerActions
     ' ════════════════════════════════════════════════════════════
     ' ACCIÓ 1: IMPORTAR
     ' ════════════════════════════════════════════════════════════
-    Private Sub BtnImportar_Click(s As Object, e As EventArgs)
+    Private Async Sub BtnImportar_Click(s As Object, e As EventArgs)
         SetStatus(Locale.Str("SRV_LLEGINT") & _conn.BaseDades & "...", AppStyle.ColTextFeble)
         Dim p As ProyectoBBDD = Nothing
         Dim errMsg As String = ""
 
-        Dim t As New Thread(Sub()
-            Try
-                p = SqlServerConnector.ImportarEstructura(_conn)
-            Catch ex As Exception
-                errMsg = ex.Message
-            End Try
-        End Sub)
-        t.IsBackground = True
-        t.Start()
-
-        ' Esperar mostrant feedback
-        Do While t.IsAlive
-            Application.DoEvents()
-            Thread.Sleep(50)
-        Loop
+        Await OperacioLlarga.ExecutarAsync(Me,
+            Sub()
+                Try
+                    p = SqlServerConnector.ImportarEstructura(_conn)
+                Catch ex As Exception
+                    errMsg = ex.Message
+                End Try
+            End Sub)
 
         If Not String.IsNullOrEmpty(errMsg) Then
             SetStatus("✗  " & errMsg, AppStyle.ColPerill)
@@ -360,7 +353,7 @@ Public Class FrmServerActions
     ' ════════════════════════════════════════════════════════════
     ' ACCIÓ 2: EXPORTAR
     ' ════════════════════════════════════════════════════════════
-    Private Sub BtnExportar_Click(s As Object, e As EventArgs)
+    Private Async Sub BtnExportar_Click(s As Object, e As EventArgs)
         Dim mode As Integer = If(_rdbCreate.Checked, 0, 2)
         Dim nomBD As String = _conn.BaseDades
 
@@ -377,15 +370,8 @@ Public Class FrmServerActions
         SetStatus(Locale.Str("SRV_EXPORTANT") & nomBD & "...", AppStyle.ColTextFeble)
         Dim res As SqlServerConnector.ResultatOperacio = Nothing
 
-        Dim t As New Thread(Sub()
-            res = SqlServerConnector.ExportarProjecte(_conn, _proyecto, mode)
-        End Sub)
-        t.IsBackground = True
-        t.Start()
-        Do While t.IsAlive
-            Application.DoEvents()
-            Thread.Sleep(50)
-        Loop
+        Await OperacioLlarga.ExecutarAsync(Me,
+            Sub() res = SqlServerConnector.ExportarProjecte(_conn, _proyecto, mode))
 
         If res.OK Then
             SetStatus(Locale.Str("SRV_EXPORT_OK"), AppStyle.ColAccentSec)
@@ -401,7 +387,7 @@ Public Class FrmServerActions
     ' ════════════════════════════════════════════════════════════
     ' ACCIÓ 3: ENVIAR PARTS
     ' ════════════════════════════════════════════════════════════
-    Private Sub BtnEnviarParts_Click(s As Object, e As EventArgs)
+    Private Async Sub BtnEnviarParts_Click(s As Object, e As EventArgs)
         ' Recollir taules seleccionades
         Dim taulesSel As New List(Of TablaBBDD)()
         If _chkTaules IsNot Nothing Then
@@ -435,15 +421,8 @@ Public Class FrmServerActions
         SetStatus(Locale.Str("SRV_ENVIANT"), AppStyle.ColTextFeble)
         Dim res As SqlServerConnector.ResultatOperacio = Nothing
 
-        Dim t As New Thread(Sub()
-            res = SqlServerConnector.EnviarParts(_conn, taulesSel, relsSel)
-        End Sub)
-        t.IsBackground = True
-        t.Start()
-        Do While t.IsAlive
-            Application.DoEvents()
-            Thread.Sleep(50)
-        Loop
+        Await OperacioLlarga.ExecutarAsync(Me,
+            Sub() res = SqlServerConnector.EnviarParts(_conn, taulesSel, relsSel))
 
         If res.OK Then
             SetStatus(Locale.Str("SRV_ENVIAT_OK") & res.TaulesCreades & Locale.Str("DLG_IMPORT_TAULES") &

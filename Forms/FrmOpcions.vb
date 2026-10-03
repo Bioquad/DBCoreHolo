@@ -35,7 +35,11 @@ Public Class FrmOpcions
     Private _btnAplicar    As Button
 
     ' Opcions globals accessibles des de qualsevol part de l'app
-    Public Shared Opcions As OpcionsSistema = OpcionsSistema.Carregar()
+    Public Shared ReadOnly Property Opcions As OpcionsSistema
+        Get
+            Return OpcionsSistema.Actual
+        End Get
+    End Property
 
     Private Const FW  As Integer = 480
     Private Const COL As Integer = 180

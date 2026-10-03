@@ -57,11 +57,19 @@ Holographic DB is a desktop application for Windows that allows you to design, d
 ### Steps
 
 ```bash
-git clone https://github.com/<username>/<repository>.git
-cd <repository>
-dotnet build -c Release
-dotnet run
+git clone https://github.com/bioquad/DBCoreHolo.git
+cd DBCoreHolo
+dotnet build DBCoreHolographic.vbproj -c Release
+dotnet run --project DBCoreHolographic.vbproj
 ```
+
+Run the automated tests (exporters, importers, ERM validation, serialization — they run on any OS):
+
+```bash
+dotnet test Tests/DBCoreHolographic.Tests.vbproj
+```
+
+Ready-to-run Windows builds are published on the [Releases](https://github.com/bioquad/DBCoreHolo/releases) page.
 
 Or open `DBCoreHolographic.slnx` with **Visual Studio 2022** (17.8+) and press **F5**.
 
@@ -82,7 +90,7 @@ Models/                    ← Pure data layer (no UI references)
   RelacionBBDD.vb           FK relationship (cardinality, ON DELETE/UPDATE...)
   ProyectoBBDD.vb           Full project container
   Enums.vb                  DataType, CardinalityType, FK actions
-  OpcionsSistema.vb         User preferences (options.json)
+  OpcionsSistema.vb         User preferences (%AppData%\DBCoreHolographic\opcions.json)
 
 MER/
   IntegrityEngine.vb        ← Validation engine for Entity-Relationship rules
@@ -95,7 +103,7 @@ Data/
   Locale.vb                 ← Localization provider (CA / ES / EN)
 
 Export/
-  TSqlExporter.vb           SQL Server DDL exporter
+  TSqlExporter.vb           SQL Server DDL exporter (single source of T-SQL)
   MySqlExporter.vb          MySQL/MariaDB DDL exporter
   PostgreSqlExporter.vb     PostgreSQL DDL exporter
   MdfExporter.vb            Physical .mdf file creation via LocalDB
@@ -121,6 +129,9 @@ Forms/
   FrmServerActions.vb       Live server import/export management
   FrmExportMdf.vb           Export to .mdf utility dialog
   HoloForm.vb               Borderless dialog base class
+  OperacioLlarga.vb         Runs slow database/file work off the UI thread
+
+Tests/                     ← xUnit tests for the non-UI core (dotnet test)
 ```
 
 ---
@@ -144,12 +155,20 @@ Available in:
 
 Projects are stored as indented UTF-8 JSON data, tracking all tables, fields, relationships, and the active camera viewport state. This plain-text architecture ensures smooth version control tracking using Git and allows for straightforward manipulation via external scripts.
 
-Example `.hdb` structure:
+Example `.hdb` structure (simplified):
 ```json
 {
-  "tables": [...],
-  "relationships": [...],
-  "viewport": {...}
+  "Nombre": "MyProject",
+  "MotorSQL": "T-SQL",
+  "CameraRotX": 0.3, "CameraRotY": 0.1, "CameraZoom": 1.0,
+  "Taules": [
+    { "Id": 1, "Nombre": "CUSTOMER", "Schema": "dbo",
+      "Fields": [ { "Nombre": "ID_CUSTOMER", "TipoDato": 3, "EsPK": true, "EsIdentity": true } ] }
+  ],
+  "Relacions": [
+    { "Id": 1, "Nombre": "FK_ORDER_CUSTOMER", "TablaOrigenId": 2, "CampoFKNombre": "ID_CUSTOMER",
+      "TablaDestinoId": 1, "CampoPKNombre": "ID_CUSTOMER", "OnDelete": 0 }
+  ]
 }
 ```
 
@@ -272,11 +291,19 @@ Holografic DB és una aplicació d'escriptori per a Windows que permet dissenyar
 ### Passos
 
 ```bash
-git clone https://github.com/<usuari>/<repositori>.git
-cd <repositori>
-dotnet build -c Release
-dotnet run
+git clone https://github.com/bioquad/DBCoreHolo.git
+cd DBCoreHolo
+dotnet build DBCoreHolographic.vbproj -c Release
+dotnet run --project DBCoreHolographic.vbproj
 ```
+
+Executar els tests automàtics (exportadors, importadors, validació MER i serialització — funcionen a qualsevol sistema operatiu):
+
+```bash
+dotnet test Tests/DBCoreHolographic.Tests.vbproj
+```
+
+Els executables per a Windows es publiquen a la pàgina de [Releases](https://github.com/bioquad/DBCoreHolo/releases).
 
 O bé obre `DBCoreHolographic.slnx` amb **Visual Studio 2022** (17.8+) i prem **F5**.
 
@@ -297,7 +324,7 @@ Models/                    ← Capa de dades pura (sense referències a UI)
   RelacionBBDD.vb           Relació FK (cardinalitat, ON DELETE/UPDATE...)
   ProyectoBBDD.vb           Projecte complet
   Enums.vb                  DataType, CardinalityType, accions FK
-  OpcionsSistema.vb         Preferències de l'usuari (options.json)
+  OpcionsSistema.vb         Preferències de l'usuari (%AppData%\DBCoreHolographic\opcions.json)
 
 MER/
   IntegrityEngine.vb        ← Validació de regles del Model Entitat-Relació
@@ -310,7 +337,7 @@ Data/
   Locale.vb                 ← Traduccions CA / ES / EN
 
 Export/
-  TSqlExporter.vb           Generador DDL SQL Server
+  TSqlExporter.vb           Generador DDL SQL Server (font única de T-SQL)
   MySqlExporter.vb          Generador DDL MySQL/MariaDB
   PostgreSqlExporter.vb     Generador DDL PostgreSQL
   MdfExporter.vb            Creació de fitxers .mdf via LocalDB
@@ -336,6 +363,9 @@ Forms/
   FrmServerActions.vb       Gestor de importació/exportació a servidor
   FrmExportMdf.vb           Diàleg de utilitat d'exportació a .mdf
   HoloForm.vb               Classe base per a diàlegs sense vora
+  OperacioLlarga.vb         Executa la feina lenta (BD, fitxers) fora del fil de la UI
+
+Tests/                     ← Tests xUnit del nucli sense UI (dotnet test)
 ```
 
 ---
@@ -359,12 +389,20 @@ Disponibles en:
 
 Els projectes es guarden com a dades UTF-8 JSON indentades, rastreant totes les taules, camps, relacions i l'estat de la càmera. Aquesta arquitectura plain-text garanteix un seguiment fàcil amb Git i permet manipulació mitjançant scripts externs.
 
-Estructura `.hdb` d'exemple:
+Estructura `.hdb` d'exemple (simplificada):
 ```json
 {
-  "tables": [...],
-  "relationships": [...],
-  "viewport": {...}
+  "Nombre": "ElMeuProjecte",
+  "MotorSQL": "T-SQL",
+  "CameraRotX": 0.3, "CameraRotY": 0.1, "CameraZoom": 1.0,
+  "Taules": [
+    { "Id": 1, "Nombre": "CLIENT", "Schema": "dbo",
+      "Fields": [ { "Nombre": "ID_CLIENT", "TipoDato": 3, "EsPK": true, "EsIdentity": true } ] }
+  ],
+  "Relacions": [
+    { "Id": 1, "Nombre": "FK_COMANDA_CLIENT", "TablaOrigenId": 2, "CampoFKNombre": "ID_CLIENT",
+      "TablaDestinoId": 1, "CampoPKNombre": "ID_CLIENT", "OnDelete": 0 }
+  ]
 }
 ```
 

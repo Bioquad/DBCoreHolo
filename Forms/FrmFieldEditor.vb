@@ -537,10 +537,8 @@ Public Class FrmFieldEditor
     End Sub
 
     Private Sub OnPKChanged(s As Object, e As EventArgs)
-        If _chkPK.Checked Then
-            _chkNN.Checked = True
-            _chkFK.Checked = False
-        End If
+        ' Un camp pot ser PK i FK alhora (p.ex. PK composta d'una taula intermèdia)
+        If _chkPK.Checked Then _chkNN.Checked = True
     End Sub
 
     Private Sub OnIdChanged(s As Object, e As EventArgs)

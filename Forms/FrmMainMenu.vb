@@ -314,7 +314,7 @@ Public Class FrmMainMenu
         End Using
     End Sub
 
-    Private Sub BtnMdf_Click(s As Object, e As EventArgs)
+    Private Async Sub BtnMdf_Click(s As Object, e As EventArgs)
         Using dlg As New OpenFileDialog()
             dlg.Filter = "SQL Server Database (*.mdf)|*.mdf|Tots els fitxers (*.*)|*.*"
             dlg.Title = "Seleccionar fitxer .mdf"
@@ -334,10 +334,10 @@ Public Class FrmMainMenu
                 lblW.Dock = DockStyle.Fill
                 lblW.TextAlign = ContentAlignment.MiddleCenter
                 fWait.Controls.Add(lblW)
-                fWait.Show()
-                Application.DoEvents()
+                fWait.Show(Me)
                 Try
-                    Dim p As ProyectoBBDD = MdfImporter.Importar(mdfPath)
+                    Dim p As ProyectoBBDD = Nothing
+                    Await OperacioLlarga.ExecutarAsync(Me, Sub() p = MdfImporter.Importar(mdfPath))
                     fWait.Close()
                     MessageBox.Show(
                         Locale.Str("DLG_IMPORTAT") & Environment.NewLine &
@@ -412,26 +412,21 @@ Public Class FrmMainMenu
         End Using
     End Sub
 
-    Private Sub BtnServer_Click(s As Object, e As EventArgs)
+    Private Async Sub BtnServer_Click(s As Object, e As EventArgs)
         Using dlgConn As New FrmConnectServer(Nothing)
             If dlgConn.ShowDialog() <> DialogResult.OK Then Return
             Dim conn As SqlServerConnector.ConnexioServidor = dlgConn.ResultConnexio
             Try
                 Dim p As ProyectoBBDD = Nothing
                 Dim errMsg As String = ""
-                Dim t As New System.Threading.Thread(Sub()
-                    Try
-                        p = SqlServerConnector.ImportarEstructura(conn)
-                    Catch ex As Exception
-                        errMsg = ex.Message
-                    End Try
-                End Sub)
-                t.IsBackground = True
-                t.Start()
-                Do While t.IsAlive
-                    Application.DoEvents()
-                    System.Threading.Thread.Sleep(50)
-                Loop
+                Await OperacioLlarga.ExecutarAsync(Me,
+                    Sub()
+                        Try
+                            p = SqlServerConnector.ImportarEstructura(conn)
+                        Catch ex As Exception
+                            errMsg = ex.Message
+                        End Try
+                    End Sub)
                 If Not String.IsNullOrEmpty(errMsg) Then
                     MessageBox.Show(Locale.Str("SRV_ERR_IMPORT") & Environment.NewLine & errMsg,
                                     Locale.Str("DLG_ERROR_TITOL"), MessageBoxButtons.OK, MessageBoxIcon.Error)

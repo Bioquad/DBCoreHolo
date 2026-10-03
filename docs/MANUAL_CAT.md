@@ -161,7 +161,7 @@ Doble clic sobre un camp (o seleccionar-lo i prémer **Enter**) obre l'**editor 
 - **Valor per defecte** (NULL, 0, GETDATE(), NEWID()... o text lliure).
 - **Àlies** i **màscara d'entrada**.
 
-> Marcar un camp com a **PK** força automàticament NOT NULL i desactiva FK (regla MER).
+> Marcar un camp com a **PK** força automàticament NOT NULL. Un camp pot ser **PK i FK alhora** (relacions identificatives), i diversos camps marcats com a PK formen una **clau primària composta** — la manera habitual de modelar la taula intermèdia d'una relació M:M.
 
 ### Pestanya AVANÇAT
 
@@ -203,11 +203,15 @@ L'**editor de relació** demana: taula origen → camp FK, taula destí → camp
 | Regla | Comportament |
 |---|---|
 | El camp destí **ha de ser PK** | Error bloquejant |
-| Els **tipus de dada** de FK i PK han de coincidir | Error bloquejant |
+| Els **tipus de dada** de FK i PK han de coincidir, inclosa la **longitud / precisió / escala** (p.ex. `VARCHAR(50)` ≠ `VARCHAR(200)`) | Error bloquejant |
+| Una FK d'una sola columna no pot referenciar **una part d'una PK composta** (tret que el camp sigui UNIQUE) | Error bloquejant |
+| **SET NULL** sobre un camp FK que és NOT NULL | Error del model (la taula parpelleja) |
 | **M:M directa prohibida** | Error bloquejant — crea una taula intermediària |
 | Relació **duplicada** (mateix origen/destí/camp) | Error bloquejant |
 | Taules i camps han d'existir | Error bloquejant |
 | **Auto-relació** (taula amb si mateixa) | Permesa (relació reflexiva) |
+
+Els noms de taules i camps es comparen **sense distingir majúscules**, com fa SQL Server amb la col·lació per defecte.
 
 Els errors apareixen en vermell dins l'editor i l'operació no es desa fins que es corregeixen. Sobre l'esfera, les taules amb infraccions **parpellegen en vermell**.
 
@@ -295,7 +299,7 @@ Menú principal *[ 3 ] Configurar paràmetres* o des del dissenyador. Disponible
 - **Mode debug**: mostra coordenades de càmera a la barra d'estat.
 - **Idioma**: English, Català, Castellano. El canvi s'aplica a tots els formularis oberts; alguns textos es completen en reiniciar.
 
-Les preferències es desen a `opcions.json`, al costat de l'executable. Aquest fitxer és personal i **no s'ha de pujar al repositori** (ja l'exclou el `.gitignore`).
+Les preferències es desen a `%AppData%\DBCoreHolographic\opcions.json` (sempre escrivible, també si l'aplicació s'instal·la a `Program Files`). Si existeix un `opcions.json` antic al costat de l'executable, es llegeix una vegada per conservar-ne la configuració. Aquest fitxer és personal i **no s'ha de pujar al repositori** (ja l'exclou el `.gitignore`).
 
 ---
 

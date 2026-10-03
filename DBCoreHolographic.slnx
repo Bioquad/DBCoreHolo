@@ -3,4 +3,5 @@
     <Build />
   </Project>
   <Project Path="DBCoreHolographic.vbproj" />
+  <Project Path="Tests/DBCoreHolographic.Tests.vbproj" />
 </Solution>

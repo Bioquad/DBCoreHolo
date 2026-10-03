@@ -45,8 +45,25 @@ Public Module ProjectSerializer
         p.DataModificacio = DateTime.Now
         p.RecalcularIds()
         Dim json As String = JsonConvert.SerializeObject(p, _cfg)
-        File.WriteAllText(ruta, json, Encoding.UTF8)
+        EscriureAtomic(ruta, json)
         AfegirARecents(ruta)
+    End Sub
+
+    ''' <summary>
+    ''' Escriu el contingut en un fitxer temporal al mateix directori i després
+    ''' el reemplaça d'un sol cop. Si l'aplicació es tanca a mitja escriptura,
+    ''' el fitxer original queda intacte.
+    ''' </summary>
+    Public Sub EscriureAtomic(ruta As String, contingut As String)
+        Dim dir As String = Path.GetDirectoryName(Path.GetFullPath(ruta))
+        If Not String.IsNullOrEmpty(dir) Then Directory.CreateDirectory(dir)
+        Dim tmp As String = ruta & ".tmp"
+        File.WriteAllText(tmp, contingut, Encoding.UTF8)
+        If File.Exists(ruta) Then
+            File.Replace(tmp, ruta, Nothing)
+        Else
+            File.Move(tmp, ruta)
+        End If
     End Sub
 
     ' ── CARREGAR ─────────────────────────────────────────────────────────
@@ -59,14 +76,17 @@ Public Module ProjectSerializer
         If p Is Nothing Then
             Throw New InvalidDataException(Locale.Str("SER_FORMAT_INVALID"))
         End If
-        ' Recalcular IDs — evita col·lisions si el fitxer és d'una versió anterior
-        p.RecalcularIds()
-        ' Inicialitzar llistes null (compatibilitat)
+        ' Inicialitzar llistes null (compatibilitat) ABANS de recórrer-les
         If p.Taules Is Nothing Then p.Taules = New List(Of TablaBBDD)()
         If p.Relacions Is Nothing Then p.Relacions = New List(Of RelacionBBDD)()
+        p.Taules.RemoveAll(Function(t) t Is Nothing)
+        p.Relacions.RemoveAll(Function(r) r Is Nothing)
         For Each t As TablaBBDD In p.Taules
             If t.Fields Is Nothing Then t.Fields = New List(Of CampoBBDD)()
+            t.Fields.RemoveAll(Function(f) f Is Nothing)
         Next
+        ' Recalcular IDs — evita col·lisions si el fitxer és d'una versió anterior
+        p.RecalcularIds()
         AfegirARecents(ruta)
         Return p
     End Function
@@ -79,7 +99,7 @@ Public Module ProjectSerializer
             recents.Insert(0, ruta)
             If recents.Count > MAX_RECENTS Then recents = recents.GetRange(0, MAX_RECENTS)
             IO.Directory.CreateDirectory(IO.Path.GetDirectoryName(_recentsPath))
-            File.WriteAllText(_recentsPath, JsonConvert.SerializeObject(recents, Formatting.Indented), Encoding.UTF8)
+            EscriureAtomic(_recentsPath, JsonConvert.SerializeObject(recents, Formatting.Indented))
         Catch
         End Try
     End Sub
